@@ -1240,16 +1240,9 @@ interface MarkdownFileLinkProps {
   /** Platform-specific menu label ("Reveal in Finder", ...); required for the
       reveal item to show. */
   revealLabel?: string | undefined;
-  /** Set for a folder link (a path ending in a separator): the click opens the
-      folder in the file manager, since the files panel only shows files. */
-  onOpenFolder?: (() => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
 }
 
 const MARKDOWN_FILE_LINK_CLASS_NAME = "chat-markdown-file-link";
-
-function isFolderLinkPath(path: string): boolean {
-  return /[\\/]$/.test(path);
-}
 
 function pathParentSegments(path: string): string[] {
   const normalized = path.replaceAll("\\", "/");
@@ -1984,7 +1977,6 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
   onOpenMedia,
   onReveal,
   revealLabel,
-  onOpenFolder,
 }: MarkdownFileLinkProps) {
   const handleOpenInEditor = useCallback(() => {
     if (!onOpen) {
@@ -2112,36 +2104,6 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
     })();
   }, [onReveal, targetPath]);
 
-  const handleOpenFolder = useCallback(() => {
-    if (!onOpenFolder) {
-      return;
-    }
-    void (async () => {
-      try {
-        const result = await onOpenFolder();
-        if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
-          return;
-        }
-        const error = squashAtomCommandFailure(result);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Unable to open folder",
-            description: error instanceof Error ? error.message : "An error occurred.",
-          }),
-        );
-      } catch (cause) {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Unable to open folder",
-            description: cause instanceof Error ? cause.message : "An error occurred.",
-          }),
-        );
-      }
-    })();
-  }, [onOpenFolder]);
-
   const handleCopy = useCallback(
     (value: string, title: string) => {
       if (typeof window === "undefined" || !navigator.clipboard?.writeText) {
@@ -2266,14 +2228,12 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
   const canOpenInEditor = onOpen !== undefined;
   const canOpenInBrowser = onOpenInBrowser !== undefined;
   const canOpenInPanel = threadRef !== undefined && Boolean(panelPath);
-  const hasPrimaryAction =
-    onOpenFolder !== undefined ||
-    hasMarkdownFilePrimaryAction({
-      canOpenInEditor,
-      canOpenInBrowser,
-      canOpenInPanel,
-      canOpenMedia: onOpenMedia !== undefined,
-    });
+  const hasPrimaryAction = hasMarkdownFilePrimaryAction({
+    canOpenInEditor,
+    canOpenInBrowser,
+    canOpenInPanel,
+    canOpenMedia: onOpenMedia !== undefined,
+  });
   const useBrowserPrimaryAction = shouldUseMarkdownFileBrowserPrimaryAction({
     iconPath,
     canOpenInEditor,
@@ -2294,10 +2254,6 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                if (onOpenFolder) {
-                  handleOpenFolder();
-                  return;
-                }
                 if (onOpen && shouldOpenMarkdownFileLinkInEditor(event)) {
                   handleOpenInEditor();
                   return;
@@ -2360,8 +2316,7 @@ function areMarkdownFileLinkPropsEqual(
     previous.onOpenInBrowser === next.onOpenInBrowser &&
     previous.onOpenMedia === next.onOpenMedia &&
     previous.onReveal === next.onReveal &&
-    previous.revealLabel === next.revealLabel &&
-    previous.onOpenFolder === next.onOpenFolder
+    previous.revealLabel === next.revealLabel
   );
 }
 
@@ -2483,22 +2438,6 @@ function useChatMarkdownState({
       return openInEditor({
         environmentId,
         input: { cwd: filePath, editor: "file-manager", reveal: true },
-      });
-    },
-    [environmentId, openInEditor],
-  );
-  const openFolderInFileManager = useCallback(
-    (folderPath: string) => {
-      if (environmentId === null) {
-        return Promise.resolve(
-          AsyncResult.failure<void, PreferredEditorEnvironmentRequiredError>(
-            Cause.fail(new PreferredEditorEnvironmentRequiredError({ targetPath: folderPath })),
-          ),
-        );
-      }
-      return openInEditor({
-        environmentId,
-        input: { cwd: folderPath, editor: "file-manager" },
       });
     },
     [environmentId, openInEditor],
@@ -2756,11 +2695,6 @@ function useChatMarkdownState({
               : undefined
           }
           revealLabel={revealInFileManagerLabel}
-          onOpenFolder={
-            canUseShellActions && isFolderLinkPath(fileLinkMeta.filePath)
-              ? () => openFolderInFileManager(fileLinkMeta.filePath)
-              : undefined
-          }
           onOpenInBrowser={
             threadRef &&
             isPreviewSupportedInRuntime() &&
@@ -2775,7 +2709,6 @@ function useChatMarkdownState({
       canUseShellActions,
       fileLinkParentSuffixByPath,
       openFileInPanel,
-      openFolderInFileManager,
       openInPreferredEditor,
       openMarkdownFileInPreview,
       openMarkdownMedia,
