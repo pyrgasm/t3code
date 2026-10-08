@@ -26,10 +26,16 @@ export interface LiquidGlassConfig {
   frost: number;
 }
 
+interface Maps {
+  displacement: string;
+  specular: string;
+}
+
 interface Surface {
   element: HTMLElement;
   filter: SVGFilterElement;
   blur: SVGFEGaussianBlurElement;
+  /** The frosted bend, then the sharp rim bends at increasing scale (red, green, blue). */
   bends: SVGFEDisplacementMapElement[];
   image: SVGFEImageElement;
   observer: ResizeObserver;
@@ -78,7 +84,10 @@ const bezelProfile = (() => {
   return profile;
 })();
 
-const mapCache = new Map<string, { url: Promise<string>; users: number }>();
+const mapCache = new Map<string, { maps: Promise<Maps>; users: number }>();
+// Light from the top left, as on macOS; the far rim catches a weaker reflection.
+const LIGHT_X = -0.55;
+const LIGHT_Y = -0.83;
 
 function renderDisplacementMap(
   cssWidth: number,
@@ -87,7 +96,7 @@ function renderDisplacementMap(
   cssBezel: number,
   squircle: boolean,
   density: number,
-): Promise<string> {
+): Promise<Maps> {
   // Rendered at device density: a 1x map bends in visible pixel steps on HiDPI screens.
   const width = Math.round(cssWidth * density);
   const height = Math.round(cssHeight * density);
@@ -95,6 +104,8 @@ function renderDisplacementMap(
   const bezel = cssBezel * density;
   // R/G: displacement (128 = none). B: rim weight, where the sharp backdrop shows through.
   const pixels = new Uint32Array(width * height).fill(0xff008080);
+  // Specular rim: white, alpha = highlight. Peaks on the outer edge, with a soft inner glow.
+  const highlights = new Uint32Array(width * height).fill(0x00ffffff);
   const halfW = width / 2;
   const halfH = height / 2;
   const r = Math.min(radius, halfW, halfH);
@@ -141,26 +152,38 @@ function renderDisplacementMap(
       const green = Math.round(128 - ny * strength * 127);
       const rim = Math.round(Math.min(1, strength * 1.4) * 255);
       pixels[y * width + x] = 0xff000000 | (rim << 16) | (green << 8) | red;
+      const facing = nx * LIGHT_X + ny * LIGHT_Y;
+      const lit = facing > 0 ? facing ** 2 : 0.5 * facing ** 2;
+      // Wider than the 1px border that sits over the outer edge, or the border hides it.
+      const falloff = Math.exp(-depth / (2.2 * density)) + 0.22 * Math.exp(-depth / (bezel * 0.4));
+      const alpha = Math.round(Math.min(1, lit * falloff) * 255);
+      if (alpha > 0) highlights[y * width + x] = (alpha << 24) | 0xffffff;
     }
   }
-  const canvas = new OffscreenCanvas(width, height);
-  const context = canvas.getContext("2d");
-  if (!context) return Promise.reject(new Error("2d context unavailable"));
-  context.putImageData(new ImageData(new Uint8ClampedArray(pixels.buffer), width, height), 0, 0);
-  return canvas.convertToBlob({ type: "image/png" }).then((blob) => URL.createObjectURL(blob));
+  const encode = (data: Uint32Array<ArrayBuffer>) => {
+    const canvas = new OffscreenCanvas(width, height);
+    const context = canvas.getContext("2d");
+    if (!context) return Promise.reject(new Error("2d context unavailable"));
+    context.putImageData(new ImageData(new Uint8ClampedArray(data.buffer), width, height), 0, 0);
+    return canvas.convertToBlob({ type: "image/png" }).then((blob) => URL.createObjectURL(blob));
+  };
+  return Promise.all([encode(pixels), encode(highlights)]).then(([displacement, specular]) => ({
+    displacement,
+    specular,
+  }));
 }
 
-function acquireMap(key: string, build: () => Promise<string>): Promise<string> {
+function acquireMap(key: string, build: () => Promise<Maps>): Promise<Maps> {
   let entry = mapCache.get(key);
   if (!entry) {
-    entry = { url: build(), users: 0 };
+    entry = { maps: build(), users: 0 };
     mapCache.set(key, entry);
   }
   entry.users++;
   // Re-insert so iteration order tracks recency for eviction.
   mapCache.delete(key);
   mapCache.set(key, entry);
-  return entry.url;
+  return entry.maps;
 }
 
 function releaseMap(key: string | null) {
@@ -173,7 +196,13 @@ function releaseMap(key: string | null) {
     if (mapCache.size <= MAP_CACHE_LIMIT) break;
     if (candidate.users > 0) continue;
     mapCache.delete(candidateKey);
-    void candidate.url.then(URL.revokeObjectURL, () => {});
+    void candidate.maps.then(
+      (maps) => {
+        URL.revokeObjectURL(maps.displacement);
+        URL.revokeObjectURL(maps.specular);
+      },
+      () => {},
+    );
   }
 }
 
@@ -189,7 +218,29 @@ function ensureHost(): SVGSVGElement {
   return host;
 }
 
-const displacementScale = (bezel: number) => (config.refraction / 100) * bezel * 2.2;
+const displacementScale = (bezel: number) => (config.refraction / 100) * bezel * 2.6;
+// Red, green and blue bend by slightly different amounts at the rim, as in real glass.
+const DISPERSION = [1, 0.96, 1, 1.04];
+
+function applyScale(surface: Surface) {
+  const scale = displacementScale(surface.bezel);
+  surface.bends.forEach((bend, index) =>
+    bend.setAttribute("scale", (scale * (DISPERSION[index] ?? 1)).toFixed(2)),
+  );
+}
+
+/**
+ * `--liquid-glass-radius` wins for surfaces whose corners come from a clip-path;
+ * the composer paints its glass on `::before`, so its own box has no radius.
+ */
+function surfaceRadius(element: HTMLElement): number {
+  const style = getComputedStyle(element);
+  const declared = Number.parseFloat(style.getPropertyValue("--liquid-glass-radius"));
+  if (declared > 0) return declared;
+  const own = Number.parseFloat(style.borderTopLeftRadius) || 0;
+  if (own > 0) return own;
+  return Number.parseFloat(getComputedStyle(element, "::before").borderTopLeftRadius) || 0;
+}
 
 function refresh(surface: Surface) {
   surface.frame = 0;
@@ -201,13 +252,13 @@ function refresh(surface: Surface) {
   const width = Math.ceil(element.offsetWidth);
   const height = Math.ceil(element.offsetHeight);
   if (width < 4 || height < 4) return;
-  const radius = Number.parseFloat(getComputedStyle(element).borderTopLeftRadius) || 0;
+  const radius = surfaceRadius(element);
   const bezel = Math.max(5, Math.min(20, Math.round(Math.min(width, height) * 0.14)));
   surface.bezel = bezel;
   // Stretch the current map at once so a growing popover never shows a seam.
   surface.image.setAttribute("width", String(width));
   surface.image.setAttribute("height", String(height));
-  for (const bend of surface.bends) bend.setAttribute("scale", displacementScale(bezel).toFixed(2));
+  applyScale(surface);
   const density = Math.min(2, window.devicePixelRatio || 1);
   const key = `${width}x${height}@${density}:${Math.round(radius)}:${bezel}:${config.squircle ? "s" : "r"}`;
   if (key === surface.mapKey) return;
@@ -216,9 +267,11 @@ function refresh(surface: Surface) {
   acquireMap(key, () =>
     renderDisplacementMap(width, height, Math.round(radius), bezel, config.squircle, density),
   ).then(
-    (url) => {
+    (maps) => {
       if (surface.mapKey !== key) return;
-      surface.image.setAttribute("href", url);
+      surface.image.setAttribute("href", maps.displacement);
+      // Painted by the rim overlay in index.css, above the tint and border.
+      element.style.setProperty("--liquid-glass-specular", `url("${maps.specular}")`);
       element.style.setProperty("--liquid-glass-filter", `url(#${surface.filter.id})`);
     },
     () => {},
@@ -245,8 +298,9 @@ function attach(element: HTMLElement) {
     filter.appendChild(node);
     return node;
   };
-  // The interior is frosted; the rim bends the sharp backdrop so the lens reads
-  // even over text. The map's blue channel masks the sharp rim over the frost.
+  // The interior is frosted; the rim bends the sharp backdrop, split into
+  // red, green and blue so the edge fringes like real glass. The map's blue
+  // channel masks the rim over the frost.
   const image = primitive("feImage", {
     x: "0",
     y: "0",
@@ -267,7 +321,28 @@ function attach(element: HTMLElement) {
       yChannelSelector: "G",
       result,
     });
-  const bends = [bend("frosted", "frostedBent"), bend("SourceGraphic", "sharpBent")];
+  // Keeps one colour channel at full alpha; the backdrop is opaque, so summing
+  // the three premultiplied results rebuilds the colour.
+  const channel = (input: string, row: string, result: string) =>
+    primitive("feColorMatrix", {
+      in: input,
+      type: "matrix",
+      values: `${row}  0 0 0 1 0`,
+      result,
+    });
+  const add = (a: string, b: string, result: string) =>
+    primitive("feComposite", { in: a, in2: b, operator: "arithmetic", k2: "1", k3: "1", result });
+  const bends = [
+    bend("frosted", "frostedBent"),
+    bend("SourceGraphic", "bentRed"),
+    bend("SourceGraphic", "bentGreen"),
+    bend("SourceGraphic", "bentBlue"),
+  ];
+  channel("bentRed", "1 0 0 0 0  0 0 0 0 0  0 0 0 0 0", "red");
+  channel("bentGreen", "0 0 0 0 0  0 1 0 0 0  0 0 0 0 0", "green");
+  channel("bentBlue", "0 0 0 0 0  0 0 0 0 0  0 0 1 0 0", "blue");
+  add("red", "green", "redGreen");
+  add("redGreen", "blue", "sharpBent");
   primitive("feColorMatrix", {
     in: "map",
     type: "matrix",
@@ -306,6 +381,7 @@ function detach(element: HTMLElement) {
   if (surface.frame) cancelAnimationFrame(surface.frame);
   surface.filter.remove();
   element.style.removeProperty("--liquid-glass-filter");
+  element.style.removeProperty("--liquid-glass-specular");
   releaseMap(surface.mapKey);
 }
 
@@ -330,9 +406,7 @@ export function configureLiquidGlass(enabled: boolean, next: LiquidGlassConfig) 
   }
   for (const surface of surfaces.values()) {
     surface.blur.setAttribute("stdDeviation", String(config.frost));
-    for (const bend of surface.bends) {
-      bend.setAttribute("scale", displacementScale(surface.bezel).toFixed(2));
-    }
+    applyScale(surface);
     if (remap) refresh(surface);
   }
 }

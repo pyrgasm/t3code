@@ -314,7 +314,8 @@ function GlassAppearanceSync() {
     root.style.setProperty("--liquid-glass-frost", `${frostPx}px`);
     root.style.setProperty("--liquid-glass-shine", (shine / 100).toFixed(2));
     // Liquid glass reads clearer than frosted glass at the same opacity setting.
-    root.style.setProperty("--liquid-glass-tint", `${Math.max(25, glassOpacity - 28)}%`);
+    root.style.setProperty("--liquid-glass-tint", `${Math.max(20, glassOpacity - 40)}%`);
+    root.style.setProperty("--liquid-glass-tint-strong", `${Math.max(35, glassOpacity - 20)}%`);
     configureLiquidGlass(liquidGlassEnabled, { refraction, squircle, frost: frostPx });
   }, [frost, glassOpacity, liquidGlassEnabled, refraction, shine, squircle]);
 

@@ -31,12 +31,15 @@ interface Glide {
   axes: { x: Axis; y: Axis; w: Axis; h: Axis };
   press: Axis;
   visible: boolean;
+  /** Lists open with their current value highlighted; the lens waits for the user to move. */
+  armed: boolean;
   hiddenAt: number;
   hideFrame: number;
   frame: number;
   lastTime: number;
   onPointerDown: () => void;
   onPointerUp: () => void;
+  onIntent: (event: Event) => void;
 }
 
 let stretch = 0.5;
@@ -98,7 +101,7 @@ function kick(glide: Glide) {
 
 function track(glide: Glide) {
   const { list, lens, axes } = glide;
-  const item = list.querySelector<HTMLElement>(HIGHLIGHTED_SELECTOR);
+  const item = glide.armed ? list.querySelector<HTMLElement>(HIGHLIGHTED_SELECTOR) : null;
   if (!item) {
     // Hover moves can clear one item a task before highlighting the next; wait a frame.
     if (glide.visible && !glide.hideFrame) {
@@ -149,6 +152,7 @@ function attach(list: HTMLElement) {
     axes: { x: axis(), y: axis(), w: axis(), h: axis() },
     press: axis(),
     visible: false,
+    armed: false,
     hiddenAt: Number.NEGATIVE_INFINITY,
     hideFrame: 0,
     frame: 0,
@@ -162,6 +166,14 @@ function attach(list: HTMLElement) {
       glide.press.target = 0;
       kick(glide);
     },
+    onIntent: (event) => {
+      // Pointer moves only count once they reach this list's items.
+      if (event.type === "pointermove" && !list.contains(event.target as Node)) return;
+      glide.armed = true;
+      document.removeEventListener("pointermove", glide.onIntent, true);
+      document.removeEventListener("keydown", glide.onIntent, true);
+      track(glide);
+    },
   };
   glides.set(list, glide);
   // childList catches filtered lists moving the highlighted item without re-highlighting it.
@@ -174,6 +186,8 @@ function attach(list: HTMLElement) {
   list.addEventListener("pointerdown", glide.onPointerDown);
   list.addEventListener("pointerup", glide.onPointerUp);
   list.addEventListener("pointerleave", glide.onPointerUp);
+  document.addEventListener("pointermove", glide.onIntent, true);
+  document.addEventListener("keydown", glide.onIntent, true);
   track(glide);
   for (const other of glides.keys()) if (!other.isConnected) detach(other);
 }
@@ -188,6 +202,8 @@ function detach(list: HTMLElement) {
   list.removeEventListener("pointerdown", glide.onPointerDown);
   list.removeEventListener("pointerup", glide.onPointerUp);
   list.removeEventListener("pointerleave", glide.onPointerUp);
+  document.removeEventListener("pointermove", glide.onIntent, true);
+  document.removeEventListener("keydown", glide.onIntent, true);
   glide.lens.remove();
   delete list.dataset.glideHost;
 }
