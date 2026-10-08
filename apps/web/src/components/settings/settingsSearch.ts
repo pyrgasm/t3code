@@ -206,6 +206,36 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["transparent transparency solid menus dialogs composer"],
   },
   {
+    id: "liquid-glass",
+    title: "Liquid glass",
+    to: "/settings/appearance",
+    searchTerms: ["refraction apple macos tahoe menus popovers dialogs effect"],
+  },
+  {
+    id: "liquid-glass-refraction",
+    title: "Refraction",
+    to: "/settings/appearance",
+    searchTerms: ["liquid lens bend distortion"],
+  },
+  {
+    id: "liquid-glass-frost",
+    title: "Frost",
+    to: "/settings/appearance",
+    searchTerms: ["liquid blur frosted"],
+  },
+  {
+    id: "liquid-glass-shine",
+    title: "Edge shine",
+    to: "/settings/appearance",
+    searchTerms: ["liquid rim highlight specular light"],
+  },
+  {
+    id: "squircle-corners",
+    title: "Squircle corners",
+    to: "/settings/appearance",
+    searchTerms: ["continuous rounded radius macos smooth"],
+  },
+  {
     id: "diff-color-scheme",
     title: "Diff colors",
     to: "/settings/appearance",
@@ -221,6 +251,18 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "panel-animations",
     title: "Panel animations",
     to: "/settings/appearance",
+  },
+  {
+    id: "menu-glide",
+    title: "Gliding highlight",
+    to: "/settings/appearance",
+    searchTerms: ["menu selection slide motion animation liquid"],
+  },
+  {
+    id: "menu-glide-stretch",
+    title: "Liquid stretch",
+    to: "/settings/appearance",
+    searchTerms: ["menu highlight velocity inflate squash motion"],
   },
   {
     id: "environment-identification",
