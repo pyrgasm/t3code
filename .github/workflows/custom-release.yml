@@ -1,0 +1,191 @@
+# Custom build of T3 Code for pyrgasm.
+#
+# The `custom` branch is upstream's stable tag named in .custom/base plus our own commits.
+# Every 3 hours, and on every push to `custom`, this replays those commits onto upstream's
+# newest stable tag (vX.Y.Z), builds the Windows x64 installer and publishes it as the
+# latest release here. The app's updater reads this repo's releases (electron-builder takes
+# the feed from GITHUB_REPOSITORY), so installs update in-app.
+#
+# Nothing is pushed back: GITHUB_TOKEN cannot push commits that touch workflow files.
+# When a replay conflicts, the build fails and opens a "Custom build failing" issue. Fix it
+# locally: rebase `custom` onto the new tag, update .custom/base, push.
+#
+# Upstream's own workflows are disabled in this repo through the API, not deleted, so
+# replays never conflict on them.
+name: Custom release
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"
+  push:
+    branches: [custom]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Build even if this upstream tag and custom commit were already released"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: custom-release
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: https://github.com/pingdotgg/t3code.git
+
+jobs:
+  plan:
+    name: Check upstream
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      tag: ${{ steps.plan.outputs.tag }}
+      base: ${{ steps.plan.outputs.base }}
+      version: ${{ steps.plan.outputs.version }}
+      key: ${{ steps.plan.outputs.key }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .custom
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          base="$(tr -d '[:space:]' < .custom/base)"
+          tag="$(git ls-remote --tags --refs "$UPSTREAM_REPO" 'v*' | sed 's#.*refs/tags/##' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+          key="$tag+$(git rev-parse HEAD)"
+          last="$(gh release view --repo "$GITHUB_REPOSITORY" --json body -q .body 2>/dev/null \
+            | sed -n 's/^Source: //p' || true)"
+          count="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName -q 'length')"
+          build=true
+          if [[ "$key" == "$last" && "$FORCE" != "true" ]]; then build=false; fi
+          {
+            echo "build=$build"
+            echo "tag=$tag"
+            echo "base=$base"
+            echo "version=${tag#v}-custom.$((count + 1))"
+            echo "key=$key"
+          } >> "$GITHUB_OUTPUT"
+          echo "upstream $tag, custom base $base, last released $last, build=$build"
+
+  build:
+    name: Build Windows x64
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      # Public values the official build ships (T3 account sign-in and relay); see
+      # the repository variables. Without them the account features are off.
+      T3CODE_CLERK_PUBLISHABLE_KEY: ${{ vars.T3CODE_CLERK_PUBLISHABLE_KEY }}
+      T3CODE_CLERK_JWT_TEMPLATE: ${{ vars.T3CODE_CLERK_JWT_TEMPLATE }}
+      T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: ${{ vars.T3CODE_CLERK_CLI_OAUTH_CLIENT_ID }}
+      T3CODE_RELAY_URL: ${{ vars.T3CODE_RELAY_URL }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      BASE: ${{ needs.plan.outputs.base }}
+    steps:
+      # Upstream's vendored .repos tree has orphaned gitlinks that break
+      # actions/checkout's submodule cleanup (release-desktop.yml), hence a manual checkout.
+      - name: Replay custom commits onto upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q .
+          git config user.name "custom-release"
+          git config user.email "custom-release@users.noreply.github.com"
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch -q --no-tags origin "+refs/heads/custom:refs/remotes/origin/custom"
+          git fetch -q --no-tags "$UPSTREAM_REPO" "+refs/tags/$BASE:refs/tags/$BASE" "+refs/tags/$TAG:refs/tags/$TAG"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git -c checkout.workers=0 checkout -q --detach "refs/tags/$TAG"
+          if [[ "$TAG" != "$BASE" ]]; then
+            git cherry-pick "refs/tags/$BASE..origin/custom"
+          else
+            git -c checkout.workers=0 checkout -q --detach origin/custom
+          fi
+          git log --oneline -n 15
+
+      - uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Install dependencies
+        run: vp install --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      # The resource monitor links the Spectre-mitigated MSVC runtime (release-desktop.yml).
+      - name: Install Spectre-mitigated MSVC libs
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installPath = & $vswhere -products * -latest -property installationPath
+          $setupExe = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          $proc = Start-Process -FilePath $setupExe `
+            -ArgumentList "modify", "--installPath", "`"$installPath`"", "--add", `
+            "Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre", "--quiet", "--norestart" `
+            -Wait -PassThru -NoNewWindow
+          if ($null -eq $proc -or $proc.ExitCode -ne 0) { exit 1 }
+
+      - name: Typecheck web
+        run: vp run --filter @t3tools/web typecheck
+
+      - name: Set version
+        run: node scripts/update-release-package-versions.ts "${{ env.VERSION }}"
+
+      - name: Build JS bundle
+        run: vp run build:desktop
+
+      - name: Build installer
+        shell: bash
+        run: vp run dist:desktop:artifact --platform win --target nsis --arch x64 --build-version "$VERSION" --skip-build --verbose
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEY: ${{ needs.plan.outputs.key }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(release/*.exe release/*.blockmap release/latest.yml)
+          ls -la "${files[@]}"
+          [[ -f release/latest.yml ]] || { echo "no latest.yml: the updater would not see this build" >&2; exit 1; }
+          commits="$(git log --format='- %s' "refs/tags/$TAG..HEAD")"
+          notes="$(printf 'Upstream: [%s](https://github.com/pingdotgg/t3code/releases/tag/%s)\n\nCustom commits:\n%s\n\nSource: %s\n' \
+            "$TAG" "$TAG" "$commits" "$KEY")"
+          gh release create "v$VERSION" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
+            --target custom --title "T3 Code $VERSION" --notes "$notes" --latest
+
+  report:
+    name: Report failure
+    needs: [plan, build]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          body="Custom build for upstream ${TAG:-?} failed: $RUN_URL. The installed app keeps working; the next good build updates it."
+          issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'Custom build failing in:title' --json number -q '.[0].number')"
+          if [[ -n "$issue" ]]; then
+            gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "Custom build failing" --body "$body"
+          fi
