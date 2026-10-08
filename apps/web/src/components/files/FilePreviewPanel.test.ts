@@ -6,7 +6,10 @@ import {
   remapFileCommentAnnotations,
 } from "./fileCommentAnnotations";
 import {
+  hostBrowseRoot,
+  hostTreePath,
   isMarkdownPreviewFile,
+  joinHostPath,
   resolveFilePreviewPath,
   setMarkdownTaskChecked,
   shouldShowFileExplorer,
@@ -72,14 +75,14 @@ describe("isMarkdownPreviewFile", () => {
 });
 
 describe("shouldShowFileExplorer", () => {
-  it("hides the workspace tree for host files and attachments", () => {
+  it("shows the tree for host files and hides it for attachments", () => {
     expect(
       shouldShowFileExplorer({
         relativePath: "/tmp/report.pdf",
         explorerOpen: true,
         attachmentOpen: false,
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldShowFileExplorer({
         relativePath: "report.pdf",
@@ -104,6 +107,27 @@ describe("shouldShowFileExplorer", () => {
         attachmentOpen: false,
       }),
     ).toBe(false);
+  });
+});
+
+describe("host path browsing", () => {
+  it("roots the tree at a folder, or at a file's folder", () => {
+    expect(hostBrowseRoot("C:\\Users\\me\\.claude\\skills\\", true)).toBe(
+      "C:\\Users\\me\\.claude\\skills",
+    );
+    expect(hostBrowseRoot("C:\\Users\\me\\notes.md", false)).toBe("C:\\Users\\me");
+    expect(hostBrowseRoot("C:\\notes.md", false)).toBe("C:\\");
+    expect(hostBrowseRoot("C:\\", true)).toBe("C:\\");
+    expect(hostBrowseRoot("/tmp/report.md", false)).toBe("/tmp");
+    expect(hostBrowseRoot("/report.md", false)).toBe("/");
+  });
+
+  it("maps tree entries to host paths and back", () => {
+    expect(joinHostPath("C:\\Users\\me", "src/a.ts")).toBe("C:\\Users\\me\\src\\a.ts");
+    expect(joinHostPath("C:\\", "a.ts")).toBe("C:\\a.ts");
+    expect(joinHostPath("/tmp", "x/y.md")).toBe("/tmp/x/y.md");
+    expect(hostTreePath("C:\\Users\\me", "C:\\Users\\me\\src\\a.ts")).toBe("src/a.ts");
+    expect(hostTreePath("/tmp", "/tmp/x/y.md")).toBe("x/y.md");
   });
 });
 

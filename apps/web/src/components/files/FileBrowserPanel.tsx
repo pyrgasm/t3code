@@ -39,6 +39,8 @@ interface FileBrowserPanelProps {
   onOpenFile: (relativePath: string) => void;
   onRefreshSelectedFile?: () => void;
   workspaceMutationId: string | null;
+  /** Path a chat mention uses for an entry; the tree path when unset. */
+  mentionPath?: (relativePath: string) => string;
 }
 
 function treePath(entry: ProjectEntry): string {
@@ -103,6 +105,7 @@ export default function FileBrowserPanel({
   onOpenFile,
   onRefreshSelectedFile,
   workspaceMutationId,
+  mentionPath,
 }: FileBrowserPanelProps) {
   const { resolvedTheme } = useTheme();
   const composerRef = useComposerHandleContext();
@@ -170,7 +173,7 @@ export default function FileBrowserPanel({
       return;
     }
     const relativePath = item.path.replace(/\/$/, "");
-    const mention = serializeComposerFileLink(relativePath);
+    const mention = serializeComposerFileLink(mentionPath?.(relativePath) ?? relativePath);
     const pointer = contextMenuPointerRef.current;
     const pointerIsFresh = pointer !== null && performance.now() - pointer.at < 1000;
     const anchorRect = context.anchorElement.getBoundingClientRect();

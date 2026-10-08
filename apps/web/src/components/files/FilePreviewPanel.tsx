@@ -80,7 +80,10 @@ import { resolveCenteredFileLineScrollTop } from "./fileLineReveal";
 import { DiffCommentAnnotation } from "../diffs/DiffCommentAnnotation";
 import { projectFileCacheKey, projectFileEditorCacheKey } from "./fileContentRevision";
 import {
+  hostBrowseRoot,
+  hostTreePath,
   isMarkdownPreviewFile,
+  joinHostPath,
   resolveFilePreviewPath,
   setMarkdownTaskChecked,
   shouldShowFileExplorer,
@@ -957,11 +960,29 @@ export default function FilePreviewPanel({
   // A chat link cannot tell a folder from a file, so a folder arrives here as
   // a file surface and the read fails. Keep the breadcrumbs, drop the preview
   // pane, and let the tree fill the surface with the folder revealed. Mutation
-  // refresh stays on so the surface notices if the path becomes a file. A host
-  // path cannot be revealed in the workspace tree, so it keeps the read error.
-  const isDirectory = file.isNotFile && !isHostFile;
+  // refresh stays on so the surface notices if the path becomes a file.
+  const isDirectory = file.isNotFile;
   // Everything preview-related keys off previewPath; a folder has no preview.
   const previewPath = isDirectory ? null : relativePath;
+  // A host path outside the workspace gets its own tree: the folder itself, or
+  // the folder holding the file. The server lists any existing folder.
+  const hostRoot =
+    attachment === undefined && relativePath !== null && isAbsolutePath(relativePath)
+      ? hostBrowseRoot(relativePath, isDirectory)
+      : null;
+  const browserCwd = hostRoot ?? cwd;
+  const browserSelectedPath =
+    hostRoot === null || relativePath === null
+      ? relativePath
+      : isDirectory
+        ? null
+        : hostTreePath(hostRoot, relativePath);
+  const browserOnOpenFile = useCallback(
+    (path: string) => onOpenFile(hostRoot === null ? path : joinHostPath(hostRoot, path)),
+    [hostRoot, onOpenFile],
+  );
+  const browserProjectName =
+    hostRoot === null ? projectName : (hostRoot.split(/[\\/]/).filter(Boolean).at(-1) ?? hostRoot);
   const [explorerOpen, setExplorerOpen] = useState(initialExplorerOpen);
   const showExplorer = shouldShowFileExplorer({
     relativePath: previewPath,
@@ -1164,7 +1185,7 @@ export default function FilePreviewPanel({
               <Globe2 className="size-3.5" />
             </FileSurfaceAction>
           ) : null}
-          {!isHostFile && previewPath !== null ? (
+          {attachment === undefined && previewPath !== null ? (
             <FileSurfaceAction
               label={explorerOpen ? "Hide file explorer" : "Show file explorer"}
               pressed={explorerOpen}
@@ -1301,13 +1322,16 @@ export default function FilePreviewPanel({
             )}
           >
             <FileBrowserPanel
-              key={`${environmentId}:${cwd}`}
+              key={`${environmentId}:${browserCwd}`}
               environmentId={environmentId}
-              cwd={cwd}
-              projectName={projectName}
-              selectedPath={relativePath}
+              cwd={browserCwd}
+              projectName={browserProjectName}
+              selectedPath={browserSelectedPath}
               selectedPathRevealId={revealRequestId}
-              onOpenFile={onOpenFile}
+              onOpenFile={browserOnOpenFile}
+              {...(hostRoot === null
+                ? {}
+                : { mentionPath: (path: string) => joinHostPath(hostRoot, path) })}
               workspaceMutationId={workspaceMutationId}
               {...(previewPath && !isMedia && !isPdf
                 ? { onRefreshSelectedFile: file.refresh }
