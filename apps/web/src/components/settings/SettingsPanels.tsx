@@ -169,7 +169,6 @@ import {
   useSettingsSearchTarget,
   useSettingsSearchTargetId,
 } from "./settingsLayout";
-import { LiquidGlassSettingsSection, MenuGlideSettingsRows } from "./LiquidGlassSettings";
 import { searchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
@@ -509,16 +508,6 @@ function AboutVersionSection() {
   );
 }
 
-const LIQUID_GLASS_SETTING_LABELS = [
-  ["liquidGlassEnabled", "Liquid glass"],
-  ["liquidGlassRefraction", "Refraction"],
-  ["liquidGlassFrost", "Frost"],
-  ["liquidGlassShine", "Edge shine"],
-  ["squircleCornersEnabled", "Squircle corners"],
-  ["menuGlideEnabled", "Gliding highlight"],
-  ["menuGlideStretch", "Liquid stretch"],
-] as const;
-
 export function useSettingsRestore(onRestored?: () => void) {
   const {
     theme,
@@ -547,9 +536,6 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Contrast"]
         : []),
       ...(settings.glassOpacity !== DEFAULT_UNIFIED_SETTINGS.glassOpacity ? ["Glass opacity"] : []),
-      ...LIQUID_GLASS_SETTING_LABELS.filter(
-        ([key]) => settings[key] !== DEFAULT_UNIFIED_SETTINGS[key],
-      ).map(([, label]) => label),
       ...(settings.diffColorScheme !== DEFAULT_UNIFIED_SETTINGS.diffColorScheme
         ? ["Diff colors"]
         : []),
@@ -695,13 +681,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.fontSizePrompt,
       settings.fontSizeTerminal,
       settings.glassOpacity,
-      settings.liquidGlassEnabled,
-      settings.liquidGlassRefraction,
-      settings.liquidGlassFrost,
-      settings.liquidGlassShine,
-      settings.squircleCornersEnabled,
-      settings.menuGlideEnabled,
-      settings.menuGlideStretch,
       settings.panelAnimationDurationMs,
       settings.responseStreamingMode,
       settings.enableProviderUpdateChecks,
@@ -804,9 +783,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       contextWindowMeterEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
-      ...Object.fromEntries(
-        LIQUID_GLASS_SETTING_LABELS.map(([key]) => [key, DEFAULT_UNIFIED_SETTINGS[key]]),
-      ),
       panelAnimationDurationMs: DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs,
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
@@ -1457,8 +1433,6 @@ export function AppearanceSettingsPanel() {
         />
       </SettingsSection>
 
-      <LiquidGlassSettingsSection />
-
       <SettingsSection id="motion" title="Motion">
         <SettingsRow
           {...searchableSetting("panel-animations")}
@@ -1511,7 +1485,6 @@ export function AppearanceSettingsPanel() {
             ) : null
           }
         />
-        <MenuGlideSettingsRows />
       </SettingsSection>
 
       <TypographySection />

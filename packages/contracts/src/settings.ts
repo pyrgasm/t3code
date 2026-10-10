@@ -100,10 +100,6 @@ export const GlassOpacity = Schema.Int.check(
 export type GlassOpacity = typeof GlassOpacity.Type;
 const DEFAULT_GLASS_OPACITY: GlassOpacity = 80;
 
-/** Liquid glass tuning, each a 0–100 strength. */
-export const LiquidGlassStrength = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100 }));
-export type LiquidGlassStrength = typeof LiquidGlassStrength.Type;
-
 export const MIN_APPEARANCE_CONTRAST = 50;
 export const MAX_APPEARANCE_CONTRAST = 200;
 export const AppearanceContrast = Schema.Int.check(
@@ -384,13 +380,6 @@ export const ClientSettingsSchema = Schema.Struct({
   glassOpacity: GlassOpacity.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_GLASS_OPACITY)),
   ),
-  liquidGlassEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  liquidGlassRefraction: LiquidGlassStrength.pipe(Schema.withDecodingDefault(Effect.succeed(70))),
-  liquidGlassFrost: LiquidGlassStrength.pipe(Schema.withDecodingDefault(Effect.succeed(25))),
-  liquidGlassShine: LiquidGlassStrength.pipe(Schema.withDecodingDefault(Effect.succeed(60))),
-  squircleCornersEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  menuGlideEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  menuGlideStretch: LiquidGlassStrength.pipe(Schema.withDecodingDefault(Effect.succeed(50))),
   fontSizeInterface: InterfaceFontSize.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_INTERFACE_FONT_SIZE)),
   ),
@@ -1637,13 +1626,6 @@ export const ClientSettingsPatch = Schema.Struct({
   diffLayout: Schema.optionalKey(DiffLayout),
   environmentIdentificationMode: Schema.optionalKey(EnvironmentIdentificationMode),
   glassOpacity: Schema.optionalKey(GlassOpacity),
-  liquidGlassEnabled: Schema.optionalKey(Schema.Boolean),
-  liquidGlassRefraction: Schema.optionalKey(LiquidGlassStrength),
-  liquidGlassFrost: Schema.optionalKey(LiquidGlassStrength),
-  liquidGlassShine: Schema.optionalKey(LiquidGlassStrength),
-  squircleCornersEnabled: Schema.optionalKey(Schema.Boolean),
-  menuGlideEnabled: Schema.optionalKey(Schema.Boolean),
-  menuGlideStretch: Schema.optionalKey(LiquidGlassStrength),
   onboardingCompletedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
   fontSizeInterface: Schema.optionalKey(InterfaceFontSize),
   fontSizePrompt: Schema.optionalKey(PromptFontSize),

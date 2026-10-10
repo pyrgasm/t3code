@@ -50,8 +50,6 @@ import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { isElectron } from "../env";
 import { applyAppearanceFontVariables } from "~/appearanceFonts";
 import { applyAppearanceContrast } from "~/appearanceContrast";
-import { configureLiquidGlass } from "~/liquidGlass";
-import { configureMenuGlide } from "~/menuGlide";
 import { useClientSettings } from "../hooks/useSettings";
 import { PlanAgentSelectionHeal } from "../planAgentSelectionHeal";
 import {
@@ -297,32 +295,6 @@ function GlassAppearanceSync() {
       style.removeProperty("--glass-blur");
     }
   }, [glassOpacity]);
-
-  const liquidGlassEnabled = useClientSettings((settings) => settings.liquidGlassEnabled);
-  const refraction = useClientSettings((settings) => settings.liquidGlassRefraction);
-  const frost = useClientSettings((settings) => settings.liquidGlassFrost);
-  const shine = useClientSettings((settings) => settings.liquidGlassShine);
-  const squircle = useClientSettings((settings) => settings.squircleCornersEnabled);
-  const menuGlideEnabled = useClientSettings((settings) => settings.menuGlideEnabled);
-  const menuGlideStretch = useClientSettings((settings) => settings.menuGlideStretch);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    root.dataset.liquidGlass = liquidGlassEnabled ? "on" : "off";
-    root.dataset.squircle = squircle ? "on" : "off";
-    const frostPx = Math.round(frost * 0.24 * 10) / 10;
-    root.style.setProperty("--liquid-glass-frost", `${frostPx}px`);
-    root.style.setProperty("--liquid-glass-shine", (shine / 100).toFixed(2));
-    // Liquid glass reads clearer than frosted glass at the same opacity setting.
-    root.style.setProperty("--liquid-glass-tint", `${Math.max(20, glassOpacity - 40)}%`);
-    root.style.setProperty("--liquid-glass-tint-strong", `${Math.max(35, glassOpacity - 20)}%`);
-    configureLiquidGlass(liquidGlassEnabled, { refraction, squircle, frost: frostPx });
-  }, [frost, glassOpacity, liquidGlassEnabled, refraction, shine, squircle]);
-
-  useEffect(() => {
-    document.documentElement.dataset.menuGlide = menuGlideEnabled ? "on" : "off";
-    configureMenuGlide(menuGlideEnabled, menuGlideStretch);
-  }, [menuGlideEnabled, menuGlideStretch]);
 
   return null;
 }
