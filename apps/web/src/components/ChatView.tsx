@@ -2885,6 +2885,7 @@ export default function ChatView(props: ChatViewProps) {
   const supportsConversationRollback =
     conversationProviderStatus !== null &&
     conversationProviderStatus.supportsConversationRollback !== false;
+  const supportsFileRewind = conversationProviderStatus?.supportsFileRewind === true;
   const phase = derivePhase(activeThread?.session ?? null);
   const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
   const latestCheckpointCompletedAt = activeThread?.checkpoints.at(-1)?.completedAt ?? null;
@@ -10377,14 +10378,16 @@ export default function ChatView(props: ChatViewProps) {
             <AlertDialogDescription>
               Rewind chat to before this message. Your prompt and attachments return to the
               composer.
-              {activeWorktreePath === null
-                ? " Files stay as they are because this thread shares the project directory."
-                : null}
+              {activeWorktreePath !== null
+                ? null
+                : supportsFileRewind
+                  ? " Revert files too undoes the agent's own file edits. Changes made by commands or other programs stay."
+                  : " Files stay as they are because this thread shares the project directory."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
-            {activeWorktreePath !== null ? (
+            {activeWorktreePath !== null || supportsFileRewind ? (
               <Button
                 variant="destructive"
                 onClick={() => {

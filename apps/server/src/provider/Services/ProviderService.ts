@@ -114,11 +114,14 @@ export interface ProviderServiceShape {
   ) => Effect.Effect<void, ProviderServiceError>;
 
   /**
-   * Roll back provider conversation state by a number of turns.
+   * Roll back provider conversation state by a number of turns. `restoreFiles`
+   * also undoes the provider's own file edits from those turns, and fails for
+   * providers that cannot.
    */
   readonly rollbackConversation: (input: {
     readonly threadId: ThreadId;
     readonly numTurns: number;
+    readonly restoreFiles?: boolean;
   }) => Effect.Effect<void, ProviderServiceError>;
 
   /**

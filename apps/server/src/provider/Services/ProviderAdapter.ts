@@ -52,6 +52,8 @@ export interface ProviderAdapterCapabilities {
   readonly promptlessTurnContinuation?: boolean;
   /** False when native conversation history cannot be rewound. */
   readonly supportsConversationRollback?: boolean;
+  /** True when rollbackThread can also undo the provider's own file edits. */
+  readonly supportsFileRewind?: boolean;
 }
 
 export interface ProviderThreadTurnSnapshot {
@@ -132,11 +134,14 @@ export interface ProviderAdapterShape<TError> {
   readonly readThread: (threadId: ThreadId) => Effect.Effect<ProviderThreadSnapshot, TError>;
 
   /**
-   * Roll back a provider thread by N turns.
+   * Roll back a provider thread by N turns. `restoreFiles` also undoes the
+   * provider's file edits from those turns; only adapters declaring
+   * `supportsFileRewind` honor it.
    */
   readonly rollbackThread: (
     threadId: ThreadId,
     numTurns: number,
+    options?: { readonly restoreFiles?: boolean },
   ) => Effect.Effect<ProviderThreadSnapshot, TError>;
 
   /**

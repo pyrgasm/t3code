@@ -122,6 +122,13 @@ class FakeClaudeQuery implements AsyncIterable<SDKMessage> {
     this.setMaxThinkingTokensCalls.push(maxThinkingTokens);
   };
 
+  public readonly rewindFilesCalls: Array<string> = [];
+  public rewindFilesResult: { canRewind: boolean; error?: string } = { canRewind: true };
+  readonly rewindFiles = async (userMessageId: string) => {
+    this.rewindFilesCalls.push(userMessageId);
+    return this.rewindFilesResult;
+  };
+
   readonly close = (): void => {
     this.closeCalls += 1;
     if (this.closeError !== undefined) {
@@ -6964,6 +6971,59 @@ describe("ClaudeAdapterLive", () => {
       Effect.provide(harness.layer),
     );
   });
+
+  it.effect.each([{ canRewind: true }, { canRewind: false }])(
+    "restores Claude's file edits from the first removed turn (canRewind: $canRewind)",
+    ({ canRewind }) => {
+      let firstTurnId = "";
+      let secondTurnId = "";
+      const harness = makeHarness({
+        forkSession: async () => ({ sessionId: CLAUDE_FORK_SESSION_ID }),
+        getSessionMessages: async (sessionId) =>
+          sessionId === CLAUDE_FORK_SESSION_ID
+            ? [
+                claudeHistoryMessage({ type: "user", uuid: firstTurnId, sessionId, content: "a" }),
+                claudeHistoryMessage({ type: "assistant", uuid: "assistant-1", sessionId }),
+              ]
+            : [
+                claudeHistoryMessage({ type: "user", uuid: firstTurnId, content: "a" }),
+                claudeHistoryMessage({ type: "assistant", uuid: "assistant-1" }),
+                claudeHistoryMessage({ type: "user", uuid: secondTurnId, content: "b" }),
+                claudeHistoryMessage({ type: "assistant", uuid: "assistant-2" }),
+              ],
+      });
+      harness.query.rewindFilesResult = canRewind
+        ? { canRewind: true }
+        : { canRewind: false, error: "No file checkpoint found for this message." };
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const session = yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+        });
+        firstTurnId = (yield* sendCompletedClaudeTurn(adapter, harness, session.threadId, "a"))
+          .turnId;
+        secondTurnId = (yield* sendCompletedClaudeTurn(adapter, harness, session.threadId, "b"))
+          .turnId;
+
+        const result = yield* adapter
+          .rollbackThread(session.threadId, 1, { restoreFiles: true })
+          .pipe(Effect.result);
+        assert.deepEqual(harness.query.rewindFilesCalls, [secondTurnId]);
+        if (canRewind) {
+          assert.equal(result._tag, "Success");
+        } else {
+          assert.equal(result._tag, "Failure");
+          // The refused restore leaves the conversation as it was.
+          assert.equal((yield* adapter.readThread(session.threadId)).turns.length, 2);
+        }
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
 
   it.effect("rewinds Claude history when the fork inserts extra system messages", () => {
     let firstTurnId = "";

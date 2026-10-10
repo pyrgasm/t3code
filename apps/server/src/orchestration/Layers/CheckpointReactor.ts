@@ -2,6 +2,7 @@ import {
   CommandId,
   type CheckpointRef,
   EventId,
+  isImportedAgentSessionMessageId,
   MessageId,
   type ProjectId,
   ThreadId,
@@ -389,6 +390,62 @@ const make = Effect.gen(function* () {
     });
   });
 
+  // A workspace without git gets no file snapshot, but rewind still needs each
+  // turn numbered, so the turn is recorded with no files. A thread with earlier
+  // unrecorded turns is left alone: rewinding it would drop those turns.
+  const recordTurnWithoutSnapshot = Effect.fn("recordTurnWithoutSnapshot")(function* (input: {
+    readonly thread: {
+      readonly id: ThreadId;
+      readonly checkpoints: ReadonlyArray<{
+        readonly turnId: TurnId;
+        readonly checkpointTurnCount: number;
+      }>;
+      readonly messages: ReadonlyArray<{
+        readonly id: MessageId;
+        readonly role: string;
+        readonly turnId: TurnId | null;
+      }>;
+    };
+    readonly turnId: TurnId;
+    readonly status: "ready" | "missing" | "error";
+    readonly createdAt: string;
+  }) {
+    const { thread, turnId } = input;
+    const recordedTurnIds = new Set<string>(thread.checkpoints.map((entry) => entry.turnId));
+    if (recordedTurnIds.has(turnId)) return;
+    const hasUnrecordedTurn = thread.messages.some(
+      (message) =>
+        message.turnId !== null &&
+        message.turnId !== turnId &&
+        (message.role === "user" || message.role === "assistant") &&
+        !isImportedAgentSessionMessageId(message.id) &&
+        !recordedTurnIds.has(message.turnId),
+    );
+    if (hasUnrecordedTurn) return;
+
+    const turnCount =
+      thread.checkpoints.reduce((max, entry) => Math.max(max, entry.checkpointTurnCount), 0) + 1;
+    yield* orchestrationEngine.dispatch({
+      type: "thread.turn.diff.complete",
+      commandId: yield* serverCommandId("untracked-turn-complete"),
+      threadId: thread.id,
+      turnId,
+      completedAt: input.createdAt,
+      // The usual ref name, so a baseline captured after a later `git init`
+      // fills it in.
+      checkpointRef: checkpointRefForThreadTurn(thread.id, turnCount),
+      status: input.status,
+      files: [],
+      assistantMessageId:
+        thread.messages
+          .toReversed()
+          .find((message) => message.role === "assistant" && message.turnId === turnId)?.id ??
+        MessageId.make(`assistant:${turnId}`),
+      checkpointTurnCount: turnCount,
+      createdAt: input.createdAt,
+    });
+  });
+
   // Capture the files left by a completed or interrupted turn.
   const captureCheckpointFromTurnCompletion = Effect.fn("captureCheckpointFromTurnCompletion")(
     function* (event: Extract<ProviderRuntimeEvent, { type: "turn.completed" | "turn.aborted" }>) {
@@ -425,7 +482,20 @@ const make = Effect.gen(function* () {
         projects,
         preferSessionRuntime: true,
       });
+      const status =
+        event.type === "turn.aborted" ? "ready" : checkpointStatusFromRuntime(event.payload.state);
       if (!checkpointCwd) {
+        // Only when the thread's own workspace has no git either; otherwise
+        // its baselines keep the numbering.
+        const threadCheckpointCwd = yield* resolveCheckpointCwd({
+          threadId: thread.id,
+          thread,
+          projects,
+          preferSessionRuntime: false,
+        });
+        if (!threadCheckpointCwd) {
+          yield* recordTurnWithoutSnapshot({ thread, turnId, status, createdAt: event.createdAt });
+        }
         return;
       }
 
@@ -448,10 +518,7 @@ const make = Effect.gen(function* () {
         thread,
         cwd: checkpointCwd,
         turnCount: nextTurnCount,
-        status:
-          event.type === "turn.aborted"
-            ? "ready"
-            : checkpointStatusFromRuntime(event.payload.state),
+        status,
         assistantMessageId: existingPlaceholder?.assistantMessageId ?? undefined,
         createdAt: event.createdAt,
       });
@@ -807,7 +874,21 @@ const make = Effect.gen(function* () {
 
     yield* providerService.assertConversationRollbackSupported(event.payload.threadId);
 
-    if (event.payload.restoreFiles !== false) {
+    // Git restores only an isolated worktree: its checkpoints hold the whole
+    // checkout. Anywhere else, a provider that tracks its own edits (Claude)
+    // undoes them during the conversation rollback instead.
+    const providerRestoresFiles =
+      event.payload.restoreFiles !== false &&
+      (checkpointCwd === undefined ||
+        !(yield* isRestoreWorkspaceIsolated(thread, checkpointCwd))) &&
+      (yield* providerService
+        .getCapabilities(thread.session?.providerInstanceId ?? thread.modelSelection.instanceId)
+        .pipe(
+          Effect.map((capabilities) => capabilities.supportsFileRewind === true),
+          Effect.orElseSucceed(() => false),
+        ));
+
+    if (event.payload.restoreFiles !== false && !providerRestoresFiles) {
       if (!checkpointCwd) {
         yield* appendRevertFailureActivity({
           threadId: event.payload.threadId,
@@ -871,7 +952,15 @@ const make = Effect.gen(function* () {
       yield* providerService.rollbackConversation({
         threadId: event.payload.threadId,
         numTurns: rolledBackTurns,
+        ...(providerRestoresFiles ? { restoreFiles: true } : {}),
       });
+    }
+    if (providerRestoresFiles) {
+      const workspaceCwd = resolveThreadWorkspaceCwd({
+        thread,
+        projects: yield* resolveThreadProjects(thread.projectId),
+      });
+      if (workspaceCwd) yield* refreshWorkspaceEntries(workspaceCwd);
     }
 
     const staleCheckpointRefs: Array<CheckpointRef> = [];

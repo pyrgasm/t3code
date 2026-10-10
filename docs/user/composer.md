@@ -107,10 +107,14 @@ into a normal draft.
 On web and desktop, choose **Edit from here** beneath a sent message to rewind
 the conversation to before that message. Choose **Revert and keep changes** to
 leave workspace files as they are, or **Revert files too** to restore them as well.
-File restore is only offered for threads running in a worktree, and it is
+In a worktree, file restore returns the whole checkout to that point, and it is
 refused when another thread or agent session also uses that directory, since
-restoring would erase their changes. A thread that works in the project directory
-rewinds the conversation only. The selected prompt and its attachments return to the composer for editing and
+restoring would erase their changes. Claude threads outside a worktree, including
+projects without git, can also revert files: this undoes only the edits Claude
+made with its own file tools, so changes from commands or other programs stay.
+Other threads that work in the project directory rewind the conversation only.
+Rewind also works in projects without git, except in older threads that began
+before T3 Code recorded their turns. The selected prompt and its attachments return to the composer for editing and
 resending. Any unsent draft stays above the restored prompt.
 
 This removes the selected message and later conversation from the active thread

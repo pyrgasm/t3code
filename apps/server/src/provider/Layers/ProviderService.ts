@@ -334,6 +334,7 @@ type ProviderServiceMethod<Name extends keyof ProviderService.ProviderService["S
 const ProviderRollbackConversationInput = Schema.Struct({
   threadId: ThreadId,
   numTurns: NonNegativeInt,
+  restoreFiles: Schema.optional(Schema.Boolean),
 });
 
 function toValidationError(
@@ -2267,13 +2268,23 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         allowRecovery: true,
       });
       metricProvider = routed.adapter.provider;
+      if (input.restoreFiles === true && routed.adapter.capabilities.supportsFileRewind !== true) {
+        return yield* toValidationError(
+          "ProviderService.rollbackConversation",
+          `Provider '${routed.adapter.provider}' cannot restore files without a git worktree.`,
+        );
+      }
       yield* Effect.annotateCurrentSpan({
         "provider.operation": "rollback-conversation",
         "provider.kind": routed.adapter.provider,
         "provider.thread_id": input.threadId,
         "provider.rollback_turns": input.numTurns,
       });
-      yield* routed.adapter.rollbackThread(routed.threadId, input.numTurns);
+      yield* routed.adapter.rollbackThread(
+        routed.threadId,
+        input.numTurns,
+        input.restoreFiles === true ? { restoreFiles: true } : undefined,
+      );
       const session = (yield* routed.adapter.listSessions()).find(
         (session) => session.threadId === routed.threadId,
       );

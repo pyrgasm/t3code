@@ -18,6 +18,7 @@ import {
   type PermissionMode,
   type PermissionResult,
   type PermissionUpdate,
+  type RewindFilesResult,
   type SDKMessage,
   type SDKRateLimitInfo,
   type SDKResultMessage,
@@ -473,6 +474,8 @@ interface ClaudeQueryRuntime extends AsyncIterable<SDKMessage> {
   readonly setModel: (model?: string) => Promise<void>;
   readonly setPermissionMode: (mode: PermissionMode) => Promise<void>;
   readonly setMaxThinkingTokens: (maxThinkingTokens: number | null) => Promise<void>;
+  /** SDK Query.rewindFiles — present on real queries; optional for test doubles. */
+  readonly rewindFiles?: (userMessageId: string) => Promise<RewindFilesResult>;
   readonly close: () => void;
 }
 
@@ -5017,6 +5020,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(existingResumeSessionId ? { resume: existingResumeSessionId } : {}),
         ...(newSessionId ? { sessionId: newSessionId } : {}),
         includePartialMessages: true,
+        // Backs up files before Claude's edit tools change them, so a rewind
+        // can restore them without a git checkpoint (rollbackThread).
+        enableFileCheckpointing: true,
         canUseTool,
         onUserDialog,
         supportedDialogKinds: ["resume_return"],
@@ -5397,9 +5403,41 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     },
   );
 
+  // Restores the files Claude's edit tools changed since the given turn began,
+  // from the CLI's own backups (enableFileCheckpointing). Shell commands and
+  // other programs' changes are not tracked, so they stay as they are.
+  const rewindFilesTo = Effect.fn("rewindFilesTo")(function* (
+    context: ClaudeSessionContext,
+    userMessageId: string | null | undefined,
+  ) {
+    const rewind = context.query.rewindFiles?.bind(context.query);
+    if (!userMessageId || !rewind) {
+      return yield* new ProviderAdapterRequestError({
+        provider: PROVIDER,
+        method: "thread/rewindFiles",
+        detail:
+          "Claude's file history for this turn is unavailable. Rewind without restoring files instead.",
+      });
+    }
+    const result = yield* Effect.tryPromise({
+      try: () => rewind(userMessageId),
+      catch: (cause) => toRequestError(context.session.threadId, "thread/rewindFiles", cause),
+    });
+    if (!result.canRewind) {
+      return yield* new ProviderAdapterRequestError({
+        provider: PROVIDER,
+        method: "thread/rewindFiles",
+        detail:
+          result.error ??
+          "Claude cannot restore files for this turn. Rewind without restoring files instead.",
+      });
+    }
+  });
+
   const rollbackThread: ClaudeAdapterShape["rollbackThread"] = Effect.fn("rollbackThread")(
-    function* (threadId, numTurns) {
+    function* (threadId, numTurns, rollbackOptions) {
       const context = yield* requireSession(threadId);
+      const restoreFiles = rollbackOptions?.restoreFiles === true;
       if (!Number.isInteger(numTurns) || numTurns < 1) {
         return yield* new ProviderAdapterValidationError({
           provider: PROVIDER,
@@ -5412,6 +5450,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         context.turnStartMessageIds.every((id) => id !== null) &&
         numTurns >= context.turnStartMessageIds.length
       ) {
+        if (restoreFiles) yield* rewindFilesTo(context, context.turnStartMessageIds[0]);
         yield* stopSessionInternal(context, { emitExitEvent: false });
         yield* startSession({
           ...context.startInput,
@@ -5562,6 +5601,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         }
         retainedBoundaries.splice(0, retainedBoundaries.length, ...remappedBoundaries);
       }
+      // Last fallible step before the session restarts, so a refused file
+      // restore leaves both the files and the conversation untouched.
+      if (restoreFiles) yield* rewindFilesTo(context, firstRemovedId);
       yield* stopSessionInternal(context, { emitExitEvent: false });
       yield* startSession({
         ...context.startInput,
@@ -5664,6 +5706,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     provider: PROVIDER,
     capabilities: {
       sessionModelSwitch: "in-session",
+      supportsFileRewind: true,
     },
     compaction: { type: "slash-command", command: "/compact" },
     startSession,
