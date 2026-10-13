@@ -34,6 +34,7 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
+import { SidebarCustomBuildBadge } from "./SidebarCustomBuildBadge";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
@@ -81,6 +82,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
             </div>
           ) : null}
         </div>
+        <SidebarCustomBuildBadge onBackdrop={backdropVariant !== null} />
         {pillLabel ? (
           <div className="ml-1 flex h-7 items-center">
             <Badge data-environment-identification="pill" size="sm" variant="secondary">
