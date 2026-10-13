@@ -286,7 +286,16 @@ export function FileBreadcrumbs(props: FileBreadcrumbsProps) {
           <BreadcrumbLabel current label={crumb.label} pathLabel={crumb.path} />
         </span>
       ) : hostPath ? (
-        <BreadcrumbLabel label={crumb.label} pathLabel={crumb.path} />
+        // A host folder opens as its own surface, whose tree browses it.
+        <button
+          type="button"
+          className="rounded-sm hover:bg-accent"
+          onClick={() =>
+            props.onOpenFile(/^[A-Za-z]:$/.test(crumb.path) ? `${crumb.path}\\` : crumb.path)
+          }
+        >
+          <BreadcrumbLabel label={crumb.label} pathLabel={crumb.path} />
+        </button>
       ) : (
         <DirectoryBreadcrumb {...props} crumb={crumb} />
       )}
