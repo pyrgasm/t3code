@@ -1,0 +1,199 @@
+# Custom build of T3 Code for pyrgasm.
+#
+# The `custom` branch is an upstream nightly tag plus our own commits. Upstream's nightly tags
+# lie on one line of history, so `<newest tag>..custom` is exactly our commits whichever
+# nightly `custom` was based on. Every hour, and on every push to `custom`, this replays
+# those commits onto upstream's newest nightly (vX.Y.Z-nightly.DATE.RUN), builds the Windows
+# x64 installer and publishes it here as a nightly prerelease. The version is upstream's with
+# two digits appended (…3053 → …305301, …305302), so it sorts above that nightly and above our
+# earlier builds on it. The app's updater follows this repo's nightly channel (electron-builder takes
+# the feed from GITHUB_REPOSITORY), so installs update in-app.
+#
+# Nothing is pushed back: GITHUB_TOKEN cannot push commits that touch workflow files.
+# When a replay conflicts, the build fails and opens a "Custom build failing" issue. Fix it
+# locally: rebase `custom` onto the newest nightly tag and push (.custom/AGENTS.md).
+#
+# Upstream's own workflows are disabled in this repo through the API, not deleted, so
+# replays never conflict on them.
+name: Custom release
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  push:
+    branches: [custom]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Build even if this upstream tag and custom commit were already released"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: custom-release
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: https://github.com/pingdotgg/t3code.git
+
+jobs:
+  plan:
+    name: Check upstream
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      key: ${{ steps.plan.outputs.key }}
+    steps:
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          tag="$(git ls-remote --tags --refs "$UPSTREAM_REPO" 'v*-nightly.*' | sed 's#.*refs/tags/##' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-nightly\.[0-9]{8}\.[0-9]+$' | sort -V | tail -1)"
+          head="$(git ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" refs/heads/custom | cut -f1)"
+          key="$tag+$head"
+          tags="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName -q '.[].tagName')"
+          newest="$(head -1 <<< "$tags")"
+          last=""
+          if [[ -n "$newest" ]]; then
+            last="$(gh release view "$newest" --repo "$GITHUB_REPOSITORY" --json body -q .body \
+              | sed -n 's/^<!-- Source: \(.*\) -->$/\1/p')"
+          fi
+          builds="$(grep -cE "^${tag//./\\.}[0-9]{2}\$" <<< "$tags" || true)"
+          build=true
+          if [[ "$key" == "$last" && "$FORCE" != "true" ]]; then build=false; fi
+          {
+            echo "build=$build"
+            echo "tag=$tag"
+            echo "version=${tag#v}$(printf '%02d' $((builds + 1)))"
+            echo "key=$key"
+          } >> "$GITHUB_OUTPUT"
+          echo "upstream $tag, custom $head, last released $last, build=$build"
+
+  build:
+    name: Build Windows x64
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      # Public values the official build ships (T3 account sign-in and relay); see
+      # the repository variables. Without them the account features are off.
+      T3CODE_CLERK_PUBLISHABLE_KEY: ${{ vars.T3CODE_CLERK_PUBLISHABLE_KEY }}
+      T3CODE_CLERK_JWT_TEMPLATE: ${{ vars.T3CODE_CLERK_JWT_TEMPLATE }}
+      T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: ${{ vars.T3CODE_CLERK_CLI_OAUTH_CLIENT_ID }}
+      T3CODE_RELAY_URL: ${{ vars.T3CODE_RELAY_URL }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      TAG: ${{ needs.plan.outputs.tag }}
+    steps:
+      # Upstream's vendored .repos tree has orphaned gitlinks that break
+      # actions/checkout's submodule cleanup (release-desktop.yml), hence a manual checkout.
+      - name: Replay custom commits onto upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q .
+          git config user.name "custom-release"
+          git config user.email "custom-release@users.noreply.github.com"
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch -q --no-tags origin "+refs/heads/custom:refs/remotes/origin/custom"
+          git fetch -q --no-tags "$UPSTREAM_REPO" "+refs/tags/$TAG:refs/tags/$TAG"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          if git merge-base --is-ancestor "refs/tags/$TAG" origin/custom; then
+            git -c checkout.workers=0 checkout -q --detach origin/custom
+          else
+            git -c checkout.workers=0 checkout -q --detach "refs/tags/$TAG"
+            git cherry-pick "refs/tags/$TAG..origin/custom"
+          fi
+          git log --oneline -n 15
+
+      - uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Install dependencies
+        run: vp install --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      # The resource monitor links the Spectre-mitigated MSVC runtime (release-desktop.yml).
+      - name: Install Spectre-mitigated MSVC libs
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installPath = & $vswhere -products * -latest -property installationPath
+          $setupExe = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          $proc = Start-Process -FilePath $setupExe `
+            -ArgumentList "modify", "--installPath", "`"$installPath`"", "--add", `
+            "Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre", "--quiet", "--norestart" `
+            -Wait -PassThru -NoNewWindow
+          if ($null -eq $proc -or $proc.ExitCode -ne 0) { exit 1 }
+
+      - name: Typecheck web
+        run: vp run --filter @t3tools/web typecheck
+
+      - name: Set version
+        run: node scripts/update-release-package-versions.ts "${{ env.VERSION }}"
+
+      - name: Build JS bundle
+        run: vp run build:desktop
+
+      - name: Build installer
+        shell: bash
+        run: vp run dist:desktop:artifact --platform win --target nsis --arch x64 --build-version "$VERSION" --skip-build --verbose
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEY: ${{ needs.plan.outputs.key }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(release/*.exe release/*.blockmap release/nightly.yml)
+          ls -la "${files[@]}"
+          [[ -f release/nightly.yml ]] || { echo "no nightly.yml: the updater would not see this build" >&2; exit 1; }
+          # The in-app update popup lists these bullets; the Source comment stays out of it.
+          commits="$(git log --reverse --format='* Custom: %s' "refs/tags/$TAG..HEAD")"
+          upstream="$(gh release view "$TAG" --repo pingdotgg/t3code --json body -q .body || true)"
+          notes="$(printf '<!-- Source: %s -->\nOn upstream [%s](https://github.com/pingdotgg/t3code/releases/tag/%s).\n\n%s\n\n%s\n' \
+            "$KEY" "$TAG" "$TAG" "$commits" "$upstream")"
+          gh release create "v$VERSION" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
+            --target custom --title "T3 Code $VERSION" --notes "$notes" --prerelease
+          issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'Custom build failing in:title' --json number -q '.[0].number')"
+          if [[ -n "$issue" ]]; then
+            gh issue close "$issue" --repo "$GITHUB_REPOSITORY" --comment "Fixed: v$VERSION built and published."
+          fi
+
+  report:
+    name: Report failure
+    needs: [plan, build]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          set -euo pipefail
+          body="Custom build for upstream ${TAG:-?} failed: $RUN_URL. The installed app keeps working; the next good build updates it."
+          issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'Custom build failing in:title' --json number -q '.[0].number')"
+          if [[ -n "$issue" ]]; then
+            gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "Custom build failing" --body "$body"
+          fi
