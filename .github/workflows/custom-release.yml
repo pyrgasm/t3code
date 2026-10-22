@@ -145,6 +145,10 @@ jobs:
       - name: Typecheck web
         run: vp run --filter @t3tools/web typecheck
 
+      - name: Test custom features
+        working-directory: apps/web
+        run: vp test run --project unit .custom.test.
+
       - name: Set version
         run: node scripts/update-release-package-versions.ts "${{ env.VERSION }}"
 
