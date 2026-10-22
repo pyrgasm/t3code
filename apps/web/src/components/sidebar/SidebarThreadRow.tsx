@@ -1502,7 +1502,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         </span>
                       )
                     ) : (
-                      <RelativeTimeLabel timestamp={threadTimeTimestamp(thread)} />
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="text-muted-foreground/55">
+                          Created: <RelativeTimeLabel timestamp={thread.createdAt} />
+                        </span>
+                        <span aria-hidden className="text-muted-foreground/35">
+                          •
+                        </span>
+                        <RelativeTimeLabel timestamp={threadTimeTimestamp(thread)} />
+                      </span>
                     )}
                   </span>
                   {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (
