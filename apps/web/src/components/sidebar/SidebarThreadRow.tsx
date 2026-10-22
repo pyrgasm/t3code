@@ -81,6 +81,7 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
+import { CreatedAndLastTime, RemoteMachineName } from "./customRowLabels";
 import {
   animateSidebarLayoutChanges,
   hasUnseenCompletion,
@@ -1153,11 +1154,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
 
   const remoteMachineIcon =
     isRemote && !showsScratchMachine ? (
-      <span className="inline-flex shrink-0 items-center gap-1 text-sidebar-muted-foreground/70">
+      <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
         <EnvironmentMachineIcon aria-hidden kind={props.environmentMachine} className="size-3.5" />
-        {props.environmentLabel ? (
-          <span className="max-w-24 truncate">{props.environmentLabel}</span>
-        ) : null}
+        <RemoteMachineName label={props.environmentLabel} />
       </span>
     ) : null;
   const diff = latestRunDiff(thread);
@@ -1544,15 +1543,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         </span>
                       )
                     ) : (
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="text-muted-foreground/55">
-                          Created: <RelativeTimeLabel timestamp={thread.createdAt} />
-                        </span>
-                        <span aria-hidden className="text-muted-foreground/35">
-                          •
-                        </span>
-                        <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
-                      </span>
+                      <CreatedAndLastTime
+                        created={<RelativeTimeLabel timestamp={thread.createdAt} />}
+                        last={<RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />}
+                      />
                     )}
                   </span>
                   {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (
