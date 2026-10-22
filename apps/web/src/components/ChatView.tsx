@@ -365,6 +365,7 @@ import {
 import { useDraftHeroLayoutTransition } from "./chat/useDraftHeroLayoutTransition";
 import { useLocalDispatchState } from "./chat/useLocalDispatchState";
 import { draftFanoutSelectionsAtom, draftSendState } from "./chat/chatViewSend";
+import { keepsFullHistory, withKeepFullHistory } from "./chat/resumeCompactChip";
 import {
   isCompactCommandMessage,
   type LocalThreadErrorEntry,
@@ -2466,18 +2467,10 @@ export default function ChatView(props: ChatViewProps) {
     })
       ? activeContextWindow.usedTokens
       : null;
-  // Threads whose Compact chip is turned on; it starts off, so a stale thread
-  // sends full history unless the user opts in to compacting first.
   const [compactThreadKeys, setCompactThreadKeys] = useState<ReadonlySet<string>>(() => new Set());
-  const keepFullHistory = !compactThreadKeys.has(routeThreadKey);
+  const keepFullHistory = keepsFullHistory(compactThreadKeys, routeThreadKey);
   const setKeepFullHistory = (threadKey: string, keep: boolean) => {
-    setCompactThreadKeys((current) => {
-      if (current.has(threadKey) !== keep) return current;
-      const next = new Set(current);
-      if (keep) next.delete(threadKey);
-      else next.add(threadKey);
-      return next;
-    });
+    setCompactThreadKeys((current) => withKeepFullHistory(current, threadKey, keep));
   };
   const toggleKeepFullHistory = () => setKeepFullHistory(routeThreadKey, !keepFullHistory);
   const toggleKeepFullHistoryStable = useStableCallback(toggleKeepFullHistory);
