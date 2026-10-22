@@ -4,6 +4,12 @@ import { APP_VERSION } from "../../branding";
 import { cn } from "../../lib/utils";
 import { readLocalApi } from "../../localApi";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import {
+  buildStatusFrom,
+  parseCustomBuildVersion,
+  type BuildStatus,
+  type WorkflowRun,
+} from "./customBuildStatus";
 
 // The fork this build comes from, and its build workflow (.github/workflows/custom-release.yml).
 const CUSTOM_BUILD_REPO = "pyrgasm/t3code";
@@ -11,26 +17,7 @@ const CUSTOM_BUILD_WORKFLOW = "custom-release.yml";
 // Unauthenticated GitHub API: 60 requests an hour per IP, two per check.
 const CHECK_INTERVAL_MS = 10 * 60 * 1000;
 
-// Upstream's nightly version with two build digits appended: 0.0.46-nightly.20261013.305301 is
-// custom build 1 on upstream nightly 3053. Only this fork ships the badge, and dev builds carry
-// a plain version, so the pattern alone identifies a custom build.
-const CUSTOM_VERSION = /^\d+\.\d+\.\d+-nightly\.\d{8}\.(?<upstream>\d+)(?<build>\d{2})$/.exec(
-  APP_VERSION,
-);
-
-type BuildStatus =
-  | { readonly kind: "checking" }
-  | { readonly kind: "unknown" }
-  | { readonly kind: "current" }
-  | { readonly kind: "ready"; readonly version: string }
-  | { readonly kind: "building"; readonly url: string }
-  | { readonly kind: "failed"; readonly url: string };
-
-interface WorkflowRun {
-  readonly status: string;
-  readonly conclusion: string | null;
-  readonly html_url: string;
-}
+const CUSTOM_VERSION = parseCustomBuildVersion(APP_VERSION);
 
 async function fetchJson<T>(path: string, signal: AbortSignal): Promise<T> {
   const response = await fetch(`https://api.github.com/repos/${CUSTOM_BUILD_REPO}/${path}`, {
@@ -50,12 +37,7 @@ async function readBuildStatus(signal: AbortSignal): Promise<BuildStatus> {
       signal,
     ),
   ]);
-  const run = runs.workflow_runs[0];
-  if (run && run.status !== "completed") return { kind: "building", url: run.html_url };
-  if (run && run.conclusion === "failure") return { kind: "failed", url: run.html_url };
-  const latest = releases[0]?.tag_name.replace(/^v/, "");
-  if (latest === undefined) return { kind: "unknown" };
-  return latest === APP_VERSION ? { kind: "current" } : { kind: "ready", version: latest };
+  return buildStatusFrom(releases[0]?.tag_name, runs.workflow_runs[0], APP_VERSION);
 }
 
 const DOT_CLASS: Record<BuildStatus["kind"], string> = {
@@ -104,9 +86,8 @@ export function SidebarCustomBuildBadge({ onBackdrop }: { onBackdrop: boolean })
     };
   }, []);
 
-  if (!CUSTOM_VERSION?.groups) return null;
-  const upstream = CUSTOM_VERSION.groups.upstream;
-  const build = Number(CUSTOM_VERSION.groups.build);
+  if (!CUSTOM_VERSION) return null;
+  const { upstream, build } = CUSTOM_VERSION;
   const url =
     status.kind === "building" || status.kind === "failed"
       ? status.url
