@@ -31,4 +31,38 @@ When a build fails, the workflow opens a "Custom build failing" issue and the si
 turns red. The fix is the same sync: rebase onto the newest nightly, resolve, push. A
 successful build closes the issue.
 
+Every custom feature has a `*.custom.test.ts(x)` next to its code, and the build runs them
+("Test custom features"). A new feature ships with one, so a rebase that loses it fails.
+
 Never open PRs against pingdotgg/t3code unless the user asks for one.
+
+## Unattended build fix
+
+`.custom/build_watch.py` (Windows task "T3 custom build watch", every 20 min on the main PC)
+starts the T3 scheduled task "Custom build fix" when a release run fails. That run is you,
+alone: nobody reads this thread until it is done. Two fixes per failure streak, then the
+watcher leaves it to the user.
+
+1. Skip checks. If any holds, reply in one line why, settle this thread (step 6) and stop:
+   - The newest completed run of the workflow is already green.
+   - Another thread in this project is running or waiting (`t3_thread_list`, statuses
+     running/waiting/starting, other than this one).
+   - `git status --porcelain` shows changes: the user is mid-edit here.
+2. Read why it failed: `gh run view <run id> --repo pyrgasm/t3code --log-failed`.
+3. Back up, then sync as in step 1 above:
+   `git tag -f custom-backup/$(date +%Y%m%d-%H%M) origin/custom`.
+   Resolve conflicts by keeping upstream's direction and re-applying our intent. Drop a
+   commit only when upstream already does the same thing. Never drop one because it is hard.
+4. Run the build's gates locally: `vp run --filter @t3tools/web typecheck` and the "Test
+   custom features" command from the workflow. Both must pass before you push.
+5. `git push --force-with-lease origin custom`, then wait for the push's run with
+   `gh run watch <id> --repo pyrgasm/t3code --exit-status` in the background.
+6. Report in at most 5 lines: the cause, what you changed, which custom commits you
+   dropped and why, and the build result. Then decide:
+   - **Settle** (`t3_thread_organize` action `settle` on this thread) when the build is
+     green, the gates passed, and every custom commit survived or was dropped only because
+     upstream does the same.
+   - **Leave it for the user** (`t3_thread_organize` action `mark_unread`, no settle) when
+     the build is still red, a custom commit was dropped for any other reason, or a
+     conflict resolution changed what a custom feature does. Name what to check.
+     To undo a bad push: `git push --force-with-lease origin custom-backup/<stamp>:custom`.
