@@ -47,15 +47,23 @@ watcher leaves it to the user.
    - The newest completed run of the workflow is already green.
    - Another thread in this project is running or waiting (`t3_thread_list`, statuses
      running/waiting/starting, other than this one).
-   - `git status --porcelain` shows changes: the user is mid-edit here.
+   - The user's checkout `C:/Users/user/Documents/Development/t3code` has uncommitted
+     changes, or commits on `custom` not on `origin/custom` (`git -C <it> status
+     --porcelain`, `git -C <it> log origin/custom..custom`): the user is mid-edit there.
 2. Read why it failed: `gh run view <run id> --repo pyrgasm/t3code --log-failed`.
-3. Back up, then sync as in step 1 above:
-   `git tag -f custom-backup/$(date +%Y%m%d-%H%M) origin/custom`.
-   Resolve conflicts by keeping upstream's direction and re-applying our intent. Drop a
-   commit only when upstream already does the same thing. Never drop one because it is hard.
+3. T3 runs this thread in its own worktree, where `custom` can't be checked out (the
+   user's checkout holds it). Work on this worktree's branch from `origin/custom`:
+   ```bash
+   git fetch origin && git reset --hard origin/custom
+   git tag -f custom-backup/$(date +%Y%m%d-%H%M) origin/custom
+   ```
+   Then fetch upstream and rebase onto the newest nightly as in step 1 above. Resolve
+   conflicts by keeping upstream's direction and re-applying our intent. Drop a commit only
+   when upstream already does the same thing. Never drop one because it is hard.
 4. Run the build's gates locally: `vp run --filter @t3tools/web typecheck` and the "Test
    custom features" command from the workflow. Both must pass before you push.
-5. `git push --force-with-lease origin custom`, then wait for the push's run with
+5. `git push --force-with-lease=custom:<origin/custom sha from step 3> origin HEAD:custom`,
+   then wait for the push's run with
    `gh run watch <id> --repo pyrgasm/t3code --exit-status` in the background.
 6. Report in at most 5 lines: the cause, what you changed, which custom commits you
    dropped and why, and the build result. Then decide:
@@ -65,4 +73,4 @@ watcher leaves it to the user.
    - **Leave it for the user** (`t3_thread_organize` action `mark_unread`, no settle) when
      the build is still red, a custom commit was dropped for any other reason, or a
      conflict resolution changed what a custom feature does. Name what to check.
-     To undo a bad push: `git push --force-with-lease origin custom-backup/<stamp>:custom`.
+     To undo a bad push: `git push --force origin custom-backup/<stamp>:custom`.
