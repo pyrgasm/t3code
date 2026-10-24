@@ -68,6 +68,11 @@ On web and desktop, the bottom line of each thread shows the start of its last m
 marked **You:** when you wrote it, or the error that stopped the thread. A thread with no
 messages yet shows its branch there instead.
 
+To sort active threads into folders by project, click the folder-tree button beside the search
+field. Each project gets a header you can fold, and the fold is remembered. Pinned, Working,
+Snoozed, and Settled threads stay in their own sections. While grouping is on, dragging a thread
+only attaches it to a chat; use the thread's buttons or menu to pin, settle, or snooze it.
+
 On web and desktop, pinned threads sit under a **Pinned** header at the top of the list that
 folds them away, like the Settled shelf. Click it to show or hide them; the thread you have open
 stays visible either way.
