@@ -82,7 +82,7 @@ messages yet shows its branch there instead.
 
 On web and desktop, pinned threads sit under a **Pinned** header at the top of the list that
 folds them away, like the Settled shelf. Click it to show or hide them; the thread you have open
-stays visible either way.
+stays visible either way. To pin a thread, hover it and click the pin beside the snooze clock.
 
 On web and desktop, drag a thread between sections to change its state. Drag a thread up into
 the pinned section to pin it at the spot you drop it; drag a pinned thread down into the active
@@ -161,8 +161,10 @@ threads has no folder unless it is pinned or you pick it in the project filter. 
 project's folder comes last and shows only while it has active threads. Click a folder to open or
 close it. A closed folder shows how many threads it holds, and a dot when one of them
 needs you. Use the pen button on a folder, or right-click it, to start a thread in that project.
-Pinned threads stay above the folders, and Snoozed and Settled stay below them. In this mode you
-cannot drag threads, and the Working section is off. Each device keeps its own choice.
+Projects with the same name on different machines share one folder, and starting a thread there
+asks which machine to use. Pinned threads stay above the folders, and Snoozed and Settled stay
+below them. In this mode you cannot drag threads, and the Working section is off. Each device
+keeps its own choice.
 
 ## Settle finished work
 
