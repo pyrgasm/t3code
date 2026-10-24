@@ -70,6 +70,10 @@ scroll position instead of following the thread to its new place in the list.
 
 Pinning does not prevent automatic settlement. Settling a thread removes its pin.
 
+On web and desktop, the bottom line of each thread shows the start of its last message,
+marked **You:** when you wrote it, or the error that stopped the thread. A thread with no
+messages yet shows its branch there instead.
+
 On web and desktop, pinned threads sit under a **Pinned** header at the top of the list that
 folds them away, like the Settled shelf. Click it to show or hide them; the thread you have open
 stays visible either way.

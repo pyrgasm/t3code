@@ -74,7 +74,12 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
-import { CreatedAndLastTime, RemoteMachineName } from "./customRowLabels";
+import {
+  CreatedAndLastTime,
+  hasThreadPreview,
+  RemoteMachineName,
+  ThreadPreview,
+} from "./customRowLabels";
 import {
   animateSidebarLayoutChanges,
   hasUnseenCompletion,
@@ -799,7 +804,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     : thread.modelSelection.model;
 
   const isRemote = thread.environmentId !== props.currentEnvironmentId;
-  const showsScratchMachine = !thread.branch && props.scratchMachineLabel !== null;
+  const previewMessage = thread.source.latestVisibleMessage;
+  const previewError =
+    (status === "failed" || status === "limited") && thread.runtime?.lastError
+      ? {
+          text: thread.runtime.lastError,
+          usageLimit: thread.runtime.lastErrorClass === "usage_limit",
+        }
+      : null;
+  const showsPreview = hasThreadPreview(previewMessage, previewError);
+  const showsScratchMachine = !showsPreview && !thread.branch && props.scratchMachineLabel !== null;
 
   const detailsTooltip = (
     <SidebarThreadTooltip
@@ -1307,6 +1321,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const diff = latestRunDiff(thread);
   // Only the provider icon would remain, so the row drops the line instead of leaving it blank.
   const metaLineEmpty =
+    !showsPreview &&
     !thread.branch &&
     !showsScratchMachine &&
     prBadge === null &&
@@ -1517,7 +1532,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             </div>
             {metaLineEmpty ? null : (
               <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
-                {thread.branch ? (
+                {showsPreview ? (
+                  <ThreadPreview message={previewMessage} error={previewError} />
+                ) : thread.branch ? (
                   <>
                     <ThreadWorktreeIndicator thread={thread} />
                     <span className="flex min-w-0 flex-1">
