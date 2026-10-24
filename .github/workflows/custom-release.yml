@@ -149,6 +149,10 @@ jobs:
         working-directory: apps/web
         run: vp test run --project unit .custom.test.
 
+      - name: Test custom server features
+        working-directory: apps/server
+        run: vp test run .custom.test.
+
       - name: Set version
         run: node scripts/update-release-package-versions.ts "${{ env.VERSION }}"
 
