@@ -3,6 +3,11 @@ import { projectTurnItemForWire } from "./WireProjection.ts";
 import * as Stream from "effect/Stream";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { makeThreadFind, findProjectedThreadItems } from "./ThreadFind.ts";
+import {
+  latestVisibleMessageFromProjection,
+  latestVisibleMessageFromRow,
+  PREVIEW_SOURCE_CHARS,
+} from "./latestMessagePreview.ts";
 import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
@@ -1098,6 +1103,7 @@ type ShellThreadRow = {
   readonly blocking_failure_payload_json: string | null;
   readonly pending_request_payload_json: string | null;
   readonly pending_secret_request_payload_json: string | null;
+  readonly latest_visible_message_json: string | null;
   readonly latest_user_message_at: string | null;
   readonly latest_user_authored_message_at: string | null;
   readonly has_actionable_proposed_plan: number;
@@ -1645,9 +1651,7 @@ export function threadShellFromProjection(
       providerSession?.lastError ?? null,
     ),
     pendingRuntimeRequest,
-    // Thread detail owns message bodies. Keeping them out of shell rows makes
-    // initial hydration and streaming updates independent of transcript size.
-    latestVisibleMessage: null,
+    latestVisibleMessage: latestVisibleMessageFromProjection(projection),
     latestUserMessageAt: latestUserMessage?.updatedAt ?? null,
     latestUserAuthoredMessageAt:
       userMessages.find((message) => message.createdBy === "user")?.updatedAt ?? null,
@@ -1743,6 +1747,7 @@ type ShellThreadState = {
   readonly lastErrorCode: OrchestrationV2ThreadShell["lastErrorCode"];
   readonly usageLimitResetAt: OrchestrationV2ThreadShell["usageLimitResetAt"];
   readonly pendingRuntimeRequest: OrchestrationV2PendingRuntimeRequestSummary | null;
+  readonly latestVisibleMessage: OrchestrationV2ThreadShell["latestVisibleMessage"];
   readonly latestUserMessageAt: DateTime.Utc | null;
   readonly latestUserAuthoredMessageAt: DateTime.Utc | null;
   readonly hasActionableProposedPlan: boolean;
@@ -1899,7 +1904,7 @@ function shellFromState(input: {
     lastErrorCode: input.state.lastErrorCode,
     usageLimitResetAt: input.state.usageLimitResetAt,
     pendingRuntimeRequest: input.state.pendingRuntimeRequest,
-    latestVisibleMessage: null,
+    latestVisibleMessage: input.state.latestVisibleMessage,
     latestUserMessageAt: input.state.latestUserMessageAt,
     latestUserAuthoredMessageAt: input.state.latestUserAuthoredMessageAt,
     hasActionableProposedPlan: input.state.hasActionableProposedPlan,
@@ -5772,6 +5777,33 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 LIMIT 1
               ) AS pending_secret_request_payload_json,
               (
+                -- Mirrors latestVisibleMessageFromProjection.
+                SELECT json_object(
+                  'id', message.message_id,
+                  'role', message.role,
+                  'text', substr(json_extract(message.payload_json, '$.text'), 1, ${PREVIEW_SOURCE_CHARS}),
+                  'updatedAt', message.updated_at
+                )
+                FROM orchestration_v2_projection_messages message
+                WHERE message.thread_id = t.thread_id
+                  AND message.streaming = 0
+                  AND (
+                    message.role = 'assistant'
+                    OR (
+                      message.role = 'user'
+                      AND json_extract(message.payload_json, '$.createdBy') = 'user'
+                    )
+                  )
+                  AND json_extract(message.payload_json, '$.workflowScript') IS NOT 1
+                  AND trim(json_extract(message.payload_json, '$.text')) != ''
+                  AND NOT EXISTS (
+                    SELECT 1 FROM orchestration_v2_projection_runs undone
+                    WHERE undone.run_id = message.run_id AND undone.status = 'rolled_back'
+                  )
+                ORDER BY message.created_at DESC, message.message_id DESC
+                LIMIT 1
+              ) AS latest_visible_message_json,
+              (
                 SELECT message.updated_at
                 FROM orchestration_v2_projection_messages message
                 WHERE message.thread_id = t.thread_id
@@ -6296,6 +6328,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             row.last_error,
           ),
           pendingRuntimeRequest,
+          latestVisibleMessage: latestVisibleMessageFromRow(row.latest_visible_message_json),
           latestUserMessageAt:
             row.latest_user_message_at === null
               ? null
