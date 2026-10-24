@@ -60,8 +60,8 @@ watcher leaves it to the user.
    Then fetch upstream and rebase onto the newest nightly as in step 1 above. Resolve
    conflicts by keeping upstream's direction and re-applying our intent. Drop a commit only
    when upstream already does the same thing. Never drop one because it is hard.
-4. Run the build's gates locally: `vp run --filter @t3tools/web typecheck` and the "Test
-   custom features" command from the workflow. Both must pass before you push.
+4. Run the build's gates locally: `vp run --filter @t3tools/web typecheck` and the two "Test
+   custom … features" commands from the workflow. All must pass before you push.
 5. `git push --force-with-lease=custom:<origin/custom sha from step 3> origin HEAD:custom`,
    then wait for the push's run with
    `gh run watch <id> --repo pyrgasm/t3code --exit-status` in the background.
