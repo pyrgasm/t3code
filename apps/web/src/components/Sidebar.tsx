@@ -214,6 +214,11 @@ import {
   SidebarSectionHeader,
   SidebarSectionPlaceholder,
 } from "./sidebar/SidebarListMarkers";
+import {
+  PINNED_SHELF_EXPANDED_KEY,
+  pinnedShelfRows,
+  SidebarPinnedShelfHeader,
+} from "./sidebar/pinnedShelf";
 
 function sameSidebarProviderEntries(
   left: ReadonlyMap<string, SidebarProviderEntry>,
@@ -385,6 +390,11 @@ function useSidebarThreads(input: {
     () => scheduleSnoozeWake(nextSnoozeWakeAt, () => bumpSnoozeWakeTick((tick) => tick + 1)),
     [nextSnoozeWakeAt],
   );
+  const [pinnedShelfExpanded, setPinnedShelfExpanded] = useLocalStorage(
+    PINNED_SHELF_EXPANDED_KEY,
+    false,
+    Schema.Boolean,
+  );
   const [settledShelfExpanded, setSettledShelfExpanded] = useLocalStorage(
     SETTLED_SHELF_EXPANDED_KEY,
     false,
@@ -435,6 +445,11 @@ function useSidebarThreads(input: {
     }
     return visible;
   })();
+  const visiblePinnedThreads = pinnedShelfRows(
+    pinnedThreads,
+    pinnedShelfExpanded,
+    (thread) => threadShellKey(thread) === routeRowThreadKey,
+  );
   const renderedSettledThreads = settledShelfExpanded
     ? visibleSettledThreads
     : routeThreadOnly(visibleSettledThreads, routeRowThreadKey);
@@ -445,7 +460,7 @@ function useSidebarThreads(input: {
     ? workingThreads
     : routeThreadOnly(workingThreads, routeRowThreadKey);
   const orderedThreads = [
-    ...pinnedThreads,
+    ...visiblePinnedThreads,
     ...activeThreads,
     ...visibleWorkingThreads,
     ...visibleSnoozedThreads,
@@ -480,6 +495,9 @@ function useSidebarThreads(input: {
         scopeKey: current.scopeKey,
         count: current.count + SETTLED_TAIL_PAGE_COUNT,
       })),
+    pinnedShelfExpanded,
+    togglePinnedShelf: () => setPinnedShelfExpanded((value) => !value),
+    visiblePinnedThreads,
     settledShelfExpanded,
     toggleSettledShelf: () => setSettledShelfExpanded((value) => !value),
     snoozedShelfExpanded,
@@ -1038,6 +1056,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     settledVisibleCount,
     hiddenSettledCount,
     showMoreSettled,
+    pinnedShelfExpanded,
+    togglePinnedShelf,
+    visiblePinnedThreads,
     settledShelfExpanded,
     toggleSettledShelf,
     snoozedShelfExpanded,
@@ -1641,7 +1662,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       return [];
     }
     const items: SidebarListItem[] = [{ kind: "marker", marker: "pinned-header" }];
-    const pinnedRows = rowsOf(pinnedThreads, "pinned");
+    const pinnedRows = rowsOf(visiblePinnedThreads, "pinned");
     items.push(...pinnedRows);
     items.push({ kind: "marker", marker: "pinned-divider" });
     const activeRows = rowsOf(activeThreads, "active");
@@ -3004,6 +3025,20 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           onDraftContextMenu={handleDraftContextMenu}
                         />,
                       ];
+                      // Outside the sortable items, so the drag layout that starts
+                      // at the pinned boundary never measures it.
+                      if (pinnedThreads.length > 0) {
+                        items.push(
+                          <SidebarPinnedShelfHeader
+                            key="pinned-shelf-header"
+                            count={pinnedThreads.length}
+                            expanded={pinnedShelfExpanded}
+                            onToggle={togglePinnedShelf}
+                            dragging={from !== null}
+                            isDropTarget={dragTargetSection === "pinned"}
+                          />,
+                        );
+                      }
                       for (const item of sidebarListItems) {
                         if (item.kind === "thread") {
                           items.push(renderThreadRow(threadByKey.get(item.key)!, item.section));
@@ -3016,7 +3051,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 key="pinned-header"
                                 marker="pinned-header"
                                 label="Pinned"
-                                visible={from !== null}
+                                visible={from !== null && pinnedThreads.length === 0}
                                 isDropTarget={dragTargetSection === "pinned"}
                               />,
                             );
