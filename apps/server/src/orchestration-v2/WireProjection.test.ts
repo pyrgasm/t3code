@@ -155,7 +155,7 @@ describe("orchestration V2 wire projection", () => {
 
     const shell = threadShellFromProjection(projection);
 
-    expect(shell.latestVisibleMessage).toBeNull();
+    expect(shell.latestVisibleMessage?.text.length).toBeLessThanOrEqual(200);
     expect(JSON.stringify(shell).length).toBeLessThan(2_000);
   });
 
