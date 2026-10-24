@@ -39,7 +39,7 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
   collapsed: boolean;
   hiddenThreads: readonly EnvironmentThreadShell[];
   onToggle: (group: SidebarProjectSnapshot) => void;
-  onNewThread: (group: SidebarProjectSnapshot) => void;
+  onNewThread: (group: SidebarProjectSnapshot, position: { x: number; y: number }) => void;
   onContextMenu: (group: SidebarProjectSnapshot, position: { x: number; y: number }) => void;
 }) {
   const { group, collapsed, hiddenThreads } = props;
@@ -105,7 +105,7 @@ export const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHead
           size="icon-xs"
           variant="ghost-muted"
           aria-label={`New thread in ${group.displayName}`}
-          onClick={() => props.onNewThread(group)}
+          onClick={(event) => props.onNewThread(group, { x: event.clientX, y: event.clientY })}
         >
           <SquarePenIcon aria-hidden />
         </Button>
