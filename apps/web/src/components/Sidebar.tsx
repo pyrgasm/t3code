@@ -280,6 +280,7 @@ import {
   pinnedShelfRows,
   SidebarPinnedShelfHeader,
 } from "./sidebar/pinnedShelf";
+import { mergeProjectFoldersByName, pickProjectFolderTarget } from "./sidebar/projectFoldersByName";
 
 function sameSidebarProviderEntries(
   left: ReadonlyMap<string, SidebarProviderEntry>,
@@ -1266,10 +1267,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       openProjectSettings(projectGroup);
     },
   );
-  const startThreadInProjectFolder = useStableCallback((group: SidebarProjectSnapshot) => {
-    if (isMobile) setOpenMobile(false);
-    void handleNewThread(scopeProjectRef(group.environmentId, group.id));
-  });
+  const startThreadInProjectFolder = useStableCallback(
+    (group: SidebarProjectSnapshot, position?: { x: number; y: number }) => {
+      void (async () => {
+        const target = await pickProjectFolderTarget(group, position);
+        if (target === null) return;
+        if (isMobile) setOpenMobile(false);
+        void handleNewThread(scopeProjectRef(target.environmentId, target.projectId));
+      })();
+    },
+  );
   const handleProjectFolderContextMenu = useStableCallback(
     (group: SidebarProjectSnapshot, position: { x: number; y: number }) => {
       const api = readLocalApi();
@@ -1295,7 +1302,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         if (clicked._tag === "Failure") return;
         switch (clicked.value) {
           case "new-thread":
-            startThreadInProjectFolder(group);
+            startThreadInProjectFolder(group, position);
             return;
           case "copy-path":
             copyPathToClipboard(group.workspaceRoot, { path: group.workspaceRoot });
@@ -1361,10 +1368,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     delegatedUnderParent,
     routeRowThreadKey,
     folderGroups: boringSidebarEnabled
-      ? scopedProjectGroups.length === 0
-        ? // An archived project keeps a folder for its active threads, below the rest.
-          [...scopeGroups, ...projectGroups.filter((project) => project.archived)]
-        : scopedProjectGroups
+      ? mergeProjectFoldersByName(
+          scopedProjectGroups.length === 0
+            ? // An archived project keeps a folder for its active threads, below the rest.
+              [...scopeGroups, ...projectGroups.filter((project) => project.archived)]
+            : scopedProjectGroups,
+        )
       : null,
     keepEmptyFolders: (group) =>
       scopedProjectGroups.length > 0 || (group.pinned && !group.archived),
@@ -3482,6 +3491,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             onSnooze={attemptSnooze}
                             onUnsnooze={attemptUnsnooze}
                             onUnpin={attemptUnpin}
+                            onPin={attemptPin}
                             onAcknowledgeWoke={acknowledgeWoke}
                             onFileDropThreads={handleThreadFileDrop}
                           />
