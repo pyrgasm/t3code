@@ -1,4 +1,38 @@
 import type { ReactNode } from "react";
+import { cn } from "~/lib/utils";
+
+type PreviewMessage = { readonly role: string; readonly text: string } | null;
+type PreviewError = { readonly text: string; readonly usageLimit: boolean } | null;
+
+/** Whether the row's bottom line shows a preview instead of the branch. */
+export function hasThreadPreview(message: PreviewMessage, error: PreviewError): boolean {
+  return error !== null || (message !== null && message.text !== "");
+}
+
+/** The bottom line of a thread row: the last message, or the error that stopped the thread. */
+export function ThreadPreview(props: { message: PreviewMessage; error: PreviewError }) {
+  if (props.error !== null) {
+    return (
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate",
+          props.error.usageLimit ? "text-warning" : "text-error",
+        )}
+      >
+        {props.error.text}
+      </span>
+    );
+  }
+  if (props.message === null) return null;
+  return (
+    <span className="min-w-0 flex-1 truncate">
+      {props.message.role === "user" ? (
+        <span className="text-muted-foreground/55">You: </span>
+      ) : null}
+      {props.message.text}
+    </span>
+  );
+}
 
 /** The environment's name beside the machine icon of a remote thread row. */
 export function RemoteMachineName(props: { label: string | null | undefined }) {
