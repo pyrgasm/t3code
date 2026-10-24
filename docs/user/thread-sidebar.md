@@ -69,13 +69,15 @@ marked **You:** when you wrote it, or the error that stopped the thread. A threa
 messages yet shows its branch there instead.
 
 To sort active threads into folders by project, click the folder-tree button beside the search
-field. Each project gets a header you can fold, and the fold is remembered. Pinned, Working,
+field. Each project gets a header you can fold, and the fold is remembered. Projects with the
+same name on different machines share one folder. The **+** on a header starts a thread in that
+project, and asks which machine to use when the project is on more than one. Pinned, Working,
 Snoozed, and Settled threads stay in their own sections. While grouping is on, dragging a thread
 only attaches it to a chat; use the thread's buttons or menu to pin, settle, or snooze it.
 
 On web and desktop, pinned threads sit under a **Pinned** header at the top of the list that
 folds them away, like the Settled shelf. Click it to show or hide them; the thread you have open
-stays visible either way.
+stays visible either way. To pin a thread, hover it and click the pin beside the snooze clock.
 
 On web and desktop, drag a thread between sections to change its state. Drag a thread up into
 the pinned section to pin it at the spot you drop it; drag a pinned thread down into the active

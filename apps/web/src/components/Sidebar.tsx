@@ -381,7 +381,7 @@ function useSidebarThreads(input: {
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly routeThreadRef: ScopedThreadRef | null;
-  readonly projectGroups: readonly ProjectGroupRef[];
+  readonly projectGroups: readonly ProjectGroupRef<ScopedProjectRef>[];
 }) {
   const { projectScopeKey, scopedProjectKeys, serverConfigs, optimisticDrop, routeThreadRef } =
     input;
@@ -3119,6 +3119,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             onSnooze={attemptSnooze}
                             onUnsnooze={attemptUnsnooze}
                             onUnpin={attemptUnpin}
+                            onPin={attemptPin}
                             onAcknowledgeWoke={acknowledgeWoke}
                             onFileDropThreads={handleThreadFileDrop}
                           />
@@ -3159,25 +3160,22 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         }
                         if (activeProjectGroups !== null && item.marker === "active-placeholder") {
                           for (const group of activeProjectGroups) {
-                            const project = group.threads[0]
-                              ? projectByKey.get(
-                                  `${group.threads[0].environmentId}:${group.threads[0].projectId}`,
-                                )
-                              : undefined;
                             items.push(
                               <SidebarProjectGroupHeader
                                 key={`project-group:${group.key}`}
                                 label={group.label}
                                 count={group.threads.length}
-                                icon={
-                                  project ? (
-                                    <ProjectFavicon project={project} className="size-3.5" />
-                                  ) : (
-                                    <FolderIcon className="size-3.5" />
-                                  )
-                                }
                                 expanded={group.expanded}
                                 onToggle={() => toggleProjectGroup(group.key)}
+                                targets={group.targets}
+                                targetLabel={(target) =>
+                                  environmentLabelById.get(target.environmentId) ??
+                                  target.environmentId
+                                }
+                                onNewThread={(target) => {
+                                  if (isMobile) setOpenMobile(false);
+                                  void newThreadContext.handleNewThread(target);
+                                }}
                               />,
                             );
                             for (const thread of group.visible) {
