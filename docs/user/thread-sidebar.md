@@ -70,6 +70,10 @@ scroll position instead of following the thread to its new place in the list.
 
 Pinning does not prevent automatic settlement. Settling a thread removes its pin.
 
+On web and desktop, pinned threads sit under a **Pinned** header at the top of the list that
+folds them away, like the Settled shelf. Click it to show or hide them; the thread you have open
+stays visible either way.
+
 On web and desktop, drag a thread between sections to change its state. Drag a thread up into
 the pinned section to pin it at the spot you drop it; drag a pinned thread down into the active
 list to unpin it. Dragging a thread onto the **Settled** header settles it, and dragging a settled
