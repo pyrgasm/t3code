@@ -81,6 +81,7 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
+import { RowPinButton } from "./pinnedShelf";
 import {
   CreatedAndLastTime,
   hasThreadPreview,
@@ -604,6 +605,7 @@ type SidebarThreadRowProps = {
   onSnooze: (threadRef: ScopedThreadRef, preset: Pick<SnoozePreset, "snoozedUntil">) => void;
   onUnsnooze: (threadRef: ScopedThreadRef) => void;
   onUnpin: (threadRef: ScopedThreadRef) => void;
+  onPin: (threadRef: ScopedThreadRef) => void;
   onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
   onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
 };
@@ -667,6 +669,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     onUnsettle,
     onUnsnooze,
     onUnpin,
+    onPin,
     readOpensPullRequestsInRightPanel,
     renamingTitle,
     thread,
@@ -975,6 +978,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   }
   const showSnoozeButton =
     canOperateThread && props.snoozeSupported && canSnooze(thread, { now: snoozeGateNow });
+  // A pinned row unpins from the pin on its first line instead.
+  const showPinButton = canOperateThread && props.pinningSupported && !props.isPinned;
   // Closing here, not just masking, keeps the menu from reopening when the button returns.
   if (snoozeMenuOpenRaw && !showSnoozeButton) setSnoozeMenuOpen(false);
   const snoozeMenuOpen = snoozeMenuOpenRaw && showSnoozeButton;
@@ -1568,7 +1573,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       />
                     )}
                   </span>
-                  {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (
+                  {props.settlementSupported ||
+                  showSnoozeButton ||
+                  showPinButton ||
+                  hasUnsentDraft ? (
                     <span
                       className={cn(
                         // Mouse clicks leave Settle focused; focus-within would pin controls over
@@ -1594,6 +1602,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           <TooltipPopup side="top">Discard draft</TooltipPopup>
                         </Tooltip>
                       ) : null}
+                      {showPinButton ? <RowPinButton onPin={() => onPin(threadRef)} /> : null}
                       {showSnoozeButton ? (
                         <SnoozeMenuButton
                           open={snoozeMenuOpen}
