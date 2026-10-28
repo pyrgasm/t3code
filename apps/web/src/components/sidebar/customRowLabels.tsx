@@ -34,9 +34,16 @@ export function ThreadPreview(props: { message: PreviewMessage; error: PreviewEr
   );
 }
 
+/** Windows' default "DESKTOP-AB12CD" names only differ after the prefix. */
+export function shortMachineName(label: string): string {
+  return label.replace(/^(DESKTOP|LAPTOP)-(?=.)/i, "");
+}
+
 /** The environment's name beside the machine icon of a remote thread row. */
 export function RemoteMachineName(props: { label: string | null | undefined }) {
-  return props.label ? <span className="ml-1 max-w-24 truncate">{props.label}</span> : null;
+  return props.label ? (
+    <span className="ml-1 max-w-24 truncate">{shortMachineName(props.label)}</span>
+  ) : null;
 }
 
 /** "Created: 2d • 15h": the thread's age, dimmed, before the time of its last message. */
