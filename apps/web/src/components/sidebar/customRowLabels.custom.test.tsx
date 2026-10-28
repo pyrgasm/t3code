@@ -8,6 +8,7 @@ import {
   CreatedAndLastTime,
   hasThreadPreview,
   RemoteMachineName,
+  shortMachineName,
   ThreadPreview,
 } from "./customRowLabels";
 
@@ -18,6 +19,17 @@ describe("remote thread row machine name", () => {
     expect(threadRow).toMatch(/<RemoteMachineName label=\{props\.environmentLabel\} \/>/);
     expect(renderToStaticMarkup(<RemoteMachineName label="pc2" />)).toContain(">pc2</span>");
     expect(renderToStaticMarkup(<RemoteMachineName label={null} />)).toBe("");
+  });
+
+  it("drops Windows' DESKTOP- and LAPTOP- prefixes", () => {
+    expect(shortMachineName("DESKTOP-AD8F3K2")).toBe("AD8F3K2");
+    expect(shortMachineName("laptop-x1")).toBe("x1");
+    expect(shortMachineName("DESKTOP-")).toBe("DESKTOP-");
+    expect(shortMachineName("Martin-PC")).toBe("Martin-PC");
+  });
+
+  it("leaves the provider icon off thread cards", () => {
+    expect(threadRow).not.toMatch(/SidebarProviderStack/);
   });
 });
 
