@@ -33,6 +33,7 @@ import { createAttachmentId } from "../attachmentStore.ts";
 import { resolveRootCliCommand } from "../cli/invocation.ts";
 import * as ServerConfig from "../config.ts";
 import * as HeadlessChrome from "./headlessChrome.ts";
+import { isVideoBytes, isVideoPath, VIDEO_MIME_TYPES } from "./localVideos.ts";
 import * as PreviewBrowser from "../preview/PreviewBrowser.ts";
 import * as PreviewBrowserHost from "../preview/PreviewBrowserHost.ts";
 
@@ -46,7 +47,7 @@ export class HtmlRenderImagesNotFoundError extends Schema.TaggedError<HtmlRender
   { paths: Schema.Array(Schema.String) },
 ) {
   override get message(): string {
-    return `These local images could not be read: ${this.paths.join(", ")}. Use absolute paths to existing image files, or remove them.`;
+    return `These local images or videos could not be read: ${this.paths.join(", ")}. Use absolute paths to existing image or video files, or remove them.`;
   }
 }
 
@@ -154,7 +155,9 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
   bmp: "image/bmp",
   ico: "image/x-icon",
 };
-const IMAGE_EXTENSIONS = Object.keys(IMAGE_MIME_TYPES).join("|");
+const IMAGE_EXTENSIONS = [...Object.keys(IMAGE_MIME_TYPES), ...Object.keys(VIDEO_MIME_TYPES)].join(
+  "|",
+);
 const ABSOLUTE_PATH = String.raw`(?:/(?!/)|[a-z]:[\\/])`;
 const LOCAL_IMAGE_PATTERN = new RegExp(
   String.raw`(["'\x60])(${ABSOLUTE_PATH}(?:(?!\1)[^\r\n]){0,2048}?\.(?:${IMAGE_EXTENSIONS}))\1` +
@@ -172,8 +175,10 @@ const findLocalImages = (html: string) =>
 const filePathFor = (reference: string) =>
   /^[a-z]:/i.test(reference) ? reference.replaceAll("\\\\", "\\") : reference;
 
-const dataUriPrefix = (path: string) =>
-  `data:${IMAGE_MIME_TYPES[path.slice(path.lastIndexOf(".") + 1).toLowerCase()] ?? "application/octet-stream"};base64,`;
+const dataUriPrefix = (path: string) => {
+  const extension = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+  return `data:${IMAGE_MIME_TYPES[extension] ?? VIDEO_MIME_TYPES[extension] ?? "application/octet-stream"};base64,`;
+};
 
 const latin1 = (bytes: Uint8Array, start: number, end: number) =>
   String.fromCharCode(...bytes.subarray(start, end));
@@ -246,7 +251,9 @@ const inlineLocalImages = Effect.fn("HtmlRender.inlineLocalImages")(function* (h
       ),
     { concurrency: 8 },
   );
-  const oversized = files.find((file) => file.size !== undefined && file.size > MAX_IMAGE_BYTES);
+  const oversized = files.find(
+    (file) => file.size !== undefined && file.size > MAX_IMAGE_BYTES && !isVideoPath(file.path),
+  );
   if (oversized?.size !== undefined) {
     return yield* new HtmlRenderImageTooLargeError({
       path: oversized.path,
@@ -256,7 +263,7 @@ const inlineLocalImages = Effect.fn("HtmlRender.inlineLocalImages")(function* (h
   const sizes = new Map(files.map((file) => [file.path, file.size]));
   const pageBytes = references.reduce((total, reference) => {
     const size = sizes.get(reference.path);
-    return size === undefined
+    return size === undefined || isVideoPath(reference.path)
       ? total
       : total +
           dataUriPrefix(reference.path).length +
@@ -272,11 +279,14 @@ const inlineLocalImages = Effect.fn("HtmlRender.inlineLocalImages")(function* (h
     files.filter((file) => file.size !== undefined),
     (file) =>
       Effect.gen(function* () {
+        const video = isVideoPath(file.path);
         const read = yield* fileSystem
-          .stream(filePathFor(file.path), { bytesToRead: MAX_IMAGE_BYTES + 1 })
+          .stream(filePathFor(file.path), video ? {} : { bytesToRead: MAX_IMAGE_BYTES + 1 })
           .pipe(Stream.mkUint8Array, Effect.option);
-        if (Option.isNone(read) || !isImageBytes(read.value)) return [];
+        if (Option.isNone(read)) return [];
         const bytes = read.value;
+        if (video) return isVideoBytes(bytes) ? [{ path: file.path, bytes }] : [];
+        if (!isImageBytes(bytes)) return [];
         if (bytes.byteLength > MAX_IMAGE_BYTES) {
           return yield* new HtmlRenderImageTooLargeError({
             path: file.path,
@@ -302,15 +312,17 @@ const inlineLocalImages = Effect.fn("HtmlRender.inlineLocalImages")(function* (h
   );
   const parts: Array<string> = [];
   let cursor = 0;
+  let videoBytes = 0;
   for (const reference of references) {
     const dataUri = dataUris.get(reference.path);
     if (dataUri === undefined) continue;
     parts.push(html.slice(cursor, reference.start), dataUri);
     cursor = reference.end;
+    if (isVideoPath(reference.path)) videoBytes += dataUri.length;
   }
   parts.push(html.slice(cursor));
   const inlined = parts.join("");
-  const inlinedBytes = Buffer.byteLength(inlined);
+  const inlinedBytes = Buffer.byteLength(inlined) - videoBytes;
   if (inlinedBytes > MAX_PAGE_BYTES) {
     return yield* new HtmlRenderPageTooLargeError({ sizeBytes: inlinedBytes });
   }
