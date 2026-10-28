@@ -3196,7 +3196,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         );
                         const isCard =
                           section === "active" || section === "pinned" || section === "working";
-                        const rowVariant = folderRow ? "folder" : isCard ? "card" : "slim";
+                        const rowVariant = folderRow ? "folderCard" : isCard ? "card" : "slim";
                         return (
                           <SortableThreadRow
                             key={threadKey}
