@@ -24,7 +24,8 @@ When the user asks for a feature or fix, they want it in their app. They do not 
    `vp run --filter @t3tools/web typecheck`.
 3. Push with `git push --force-with-lease origin custom`. The rebase rewrites history,
    so a plain push fails.
-4. Tell the user the build takes about 15 minutes and the app then offers the update. Watch it
+4. Tell the user the build takes about 6 minutes (10 when the resource monitor
+   changes) and the app then offers the update. Watch it
    with `gh run list --repo pyrgasm/t3code --workflow custom-release.yml --limit 1`.
 
 When a build fails, the workflow opens a "Custom build failing" issue and the sidebar badge
