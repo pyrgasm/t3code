@@ -178,6 +178,9 @@ jobs:
         shell: bash
         env:
           T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR: true
+          # 7z defaults to -mx=9, about a minute on 557 MB. Fast mode trades a slightly bigger
+          # installer for most of that minute.
+          ELECTRON_BUILDER_COMPRESSION_LEVEL: 3
         run: vp run dist:desktop:artifact --platform win --target nsis --arch x64 --build-version "$VERSION" --skip-build --verbose
 
       - name: Publish release
