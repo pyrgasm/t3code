@@ -47,9 +47,10 @@ watcher leaves it to the user.
    - The newest completed run of the workflow is already green.
    - Another thread in this project is running or waiting (`t3_thread_list`, statuses
      running/waiting/starting, other than this one).
-   - The user's checkout `C:/Users/user/Documents/Development/t3code` has uncommitted
-     changes, or commits on `custom` not on `origin/custom` (`git -C <it> status
-     --porcelain`, `git -C <it> log origin/custom..custom`): the user is mid-edit there.
+
+   The user never develops in their checkout `C:/Users/user/Documents/Development/t3code`;
+   its local `custom` is only ever a stale copy. Never skip because of it.
+
 2. Read why it failed: `gh run view <run id> --repo pyrgasm/t3code --log-failed`.
 3. T3 runs this thread in its own worktree, where `custom` can't be checked out (the
    user's checkout holds it). Work on this worktree's branch from `origin/custom`:
@@ -62,9 +63,18 @@ watcher leaves it to the user.
    when upstream already does the same thing. Never drop one because it is hard.
 4. Run the build's gates locally: `vp run --filter @t3tools/web typecheck` and the two "Test
    custom … features" commands from the workflow. All must pass before you push.
+   A fresh worktree has no `node_modules` and `vp` may not be on PATH: run
+   `C:/Users/user/Documents/Development/t3code/node_modules/.bin/vp.cmd i` first and use
+   `node_modules/.bin/vp.cmd` from then on.
 5. `git push --force-with-lease=custom:<origin/custom sha from step 3> origin HEAD:custom`,
    then wait for the push's run with
    `gh run watch <id> --repo pyrgasm/t3code --exit-status` in the background.
+   Bring the user's checkout along so it never goes stale:
+   ```bash
+   U=C:/Users/user/Documents/Development/t3code
+   git -C $U fetch origin && git -C $U tag -f custom-backup/local-$(date +%Y%m%d-%H%M) custom
+   git -C $U switch custom && git -C $U reset --hard origin/custom
+   ```
 6. Report in at most 5 lines: the cause, what you changed, which custom commits you
    dropped and why, and the build result. Then decide:
    - **Settle** (`t3_thread_organize` action `settle` on this thread) when the build is
