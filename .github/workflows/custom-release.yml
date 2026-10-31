@@ -197,10 +197,12 @@ jobs:
           # The in-app update popup lists these bullets; the Source comment stays out of it.
           commits="$(git log --reverse --format='* Custom: %s' "refs/tags/$TAG..HEAD")"
           upstream="$(gh release view "$TAG" --repo pingdotgg/t3code --json body -q .body || true)"
-          notes="$(printf '<!-- Source: %s -->\nOn upstream [%s](https://github.com/pingdotgg/t3code/releases/tag/%s).\n\n%s\n\n%s\n' \
-            "$KEY" "$TAG" "$TAG" "$commits" "$upstream")"
+          # A file, not --notes: upstream's notes alone can pass Windows' 32K command-line limit.
+          notes="$RUNNER_TEMP/release-notes.md"
+          printf '<!-- Source: %s -->\nOn upstream [%s](https://github.com/pingdotgg/t3code/releases/tag/%s).\n\n%s\n\n%s\n' \
+            "$KEY" "$TAG" "$TAG" "$commits" "$upstream" > "$notes"
           gh release create "v$VERSION" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
-            --target custom --title "T3 Code $VERSION" --notes "$notes" --prerelease
+            --target custom --title "T3 Code $VERSION" --notes-file "$notes" --prerelease
           issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'Custom build failing in:title' --json number -q '.[0].number')"
           if [[ -n "$issue" ]]; then
             gh issue close "$issue" --repo "$GITHUB_REPOSITORY" --comment "Fixed: v$VERSION built and published."
