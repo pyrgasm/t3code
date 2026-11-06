@@ -10,7 +10,15 @@ import {
   officePreviewKind,
   FILE_TEXT_PREVIEW_MAX_BYTES,
 } from "@t3tools/shared/filePreview";
-import { ChevronRightIcon, DownloadIcon, Trash2Icon, WrapTextIcon, XIcon } from "lucide-react";
+import {
+  AppWindowIcon,
+  ChevronRightIcon,
+  DownloadIcon,
+  FolderOpenIcon,
+  Trash2Icon,
+  WrapTextIcon,
+  XIcon,
+} from "lucide-react";
 import { Check, Code2, Copy, Eye, Table2 } from "lucide";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 
@@ -24,6 +32,13 @@ import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 
+import {
+  mediaHostEnvironmentId,
+  runMediaAction,
+  useMediaActions,
+  type MediaActionSource,
+} from "../media/MediaActions";
+import { useMediaHostActions } from "../media/mediaHostActions";
 import { BinaryFilePreview } from "./BinaryFilePreview";
 import { PreviewImage } from "./PreviewImage";
 import { AudioPreview } from "./AudioPreview";
@@ -138,6 +153,17 @@ export function AttachmentFilePreview(props: {
     props.file ? null : resource,
   );
   const prepareDownload = useAssetUrlRefresh(props.asset?.environmentId ?? null, downloadResource);
+  // A draft's local Blob has no file on the host yet.
+  const hostSource: MediaActionSource = {
+    kind: kind === "video" ? "video" : "image",
+    name: props.name,
+    src: null,
+    ...(!props.file && props.asset && resource
+      ? { asset: { environmentId: props.asset.environmentId, resource } }
+      : {}),
+  };
+  const hostFile = useMediaActions(hostSource);
+  const hostActions = useMediaHostActions(mediaHostEnvironmentId(hostSource));
   const [saving, setSaving] = useState(false);
   const [localUrl, setLocalUrl] = useState<string | null>(null);
   const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
@@ -366,6 +392,7 @@ export function AttachmentFilePreview(props: {
       name={props.name}
       mimeType={props.mimeType}
       onError={() => setError("Unable to load image.")}
+      actionsSource={{ ...hostSource, src: url }}
     />
   ) : (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 px-6 text-center">
@@ -453,6 +480,24 @@ export function AttachmentFilePreview(props: {
             onPress={save}
           >
             <DownloadIcon className="size-3.5" />
+          </FileSurfaceAction>
+        ) : null}
+        {hostActions?.revealLabel !== undefined ? (
+          <FileSurfaceAction
+            label={hostActions.revealLabel}
+            onPress={() => void runMediaAction("Could not reveal file", hostFile.revealOnHost)}
+          >
+            <FolderOpenIcon className="size-3.5" />
+          </FileSurfaceAction>
+        ) : null}
+        {hostActions ? (
+          <FileSurfaceAction
+            label="Open with default app"
+            onPress={() =>
+              void runMediaAction("Could not open with default app", hostFile.openOnHost)
+            }
+          >
+            <AppWindowIcon className="size-3.5" />
           </FileSurfaceAction>
         ) : null}
         {props.onRemove ? (

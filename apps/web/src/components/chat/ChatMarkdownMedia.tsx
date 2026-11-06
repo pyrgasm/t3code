@@ -169,12 +169,34 @@ export function ChatMarkdownImage(props: {
   readonly actionsSource: MediaActionSource;
   readonly originalUrl?: string | undefined;
   readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
+  /** False inside a link, whose click navigates; the menu still opens the preview. */
+  readonly expandOnClick?: boolean | undefined;
 }) {
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const src = props.src ?? loadedSrc;
   const failed = props.sourceFailed === true || (src !== null && failedSrc === src);
   const settled = src !== null && !failed && (!props.standalone || loadedSrc !== null);
+  const clickExpand = props.expandOnClick === false ? undefined : props.onImageExpand;
+  const onImageExpand = props.onImageExpand;
+  const actionsSource: MediaActionSource =
+    onImageExpand && src !== null
+      ? {
+          ...props.actionsSource,
+          onExpand: () =>
+            onImageExpand({
+              images: [
+                {
+                  src,
+                  name: props.alt.trim() || "image",
+                  actionsSource: props.actionsSource,
+                  ...(props.originalUrl ? { originalUrl: props.originalUrl } : {}),
+                },
+              ],
+              index: 0,
+            }),
+        }
+      : props.actionsSource;
   // Cached images are complete before `onLoad` can fire.
   const markLoadedIfComplete = (image: HTMLImageElement | null) => {
     if (!image) return;
@@ -199,7 +221,7 @@ export function ChatMarkdownImage(props: {
 
   if (settled) {
     return (
-      <MediaActions source={props.actionsSource}>
+      <MediaActions source={actionsSource}>
         <img
           {...props.imageProps}
           ref={markLoadedIfComplete}
@@ -212,10 +234,10 @@ export function ChatMarkdownImage(props: {
           className={cn(
             CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME,
             props.className,
-            props.onImageExpand && "cursor-zoom-in",
+            clickExpand && "cursor-zoom-in",
           )}
           style={props.style}
-          {...expandableMarkdownImageProps(props.onImageExpand, props.alt)}
+          {...expandableMarkdownImageProps(clickExpand, props.alt)}
           {...imageEvents(src)}
         />
       </MediaActions>
@@ -285,7 +307,9 @@ export function ChatMarkdownVideo(props: {
   readonly mediaIdentity?: string | undefined;
   readonly actionsSource?: MediaActionSource | undefined;
   readonly onRetry?: (() => Promise<unknown>) | undefined;
+  readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
 }) {
+  const { actionsSource, onImageExpand } = props;
   return (
     <MediaVideoPlayer
       key={props.mediaIdentity ?? props.copyMarkdown ?? props.src}
@@ -305,7 +329,27 @@ export function ChatMarkdownVideo(props: {
         CHAT_MARKDOWN_MEDIA_FRAME_CLASS_NAME,
       )}
       onRetry={props.onRetry}
-      actionsSource={props.actionsSource}
+      actionsSource={
+        actionsSource && onImageExpand
+          ? {
+              ...actionsSource,
+              onExpand: () =>
+                onImageExpand({
+                  images: [
+                    {
+                      src: props.src,
+                      name: props.alt.trim() || "video",
+                      type: "video",
+                      autoPlay: true,
+                      actionsSource,
+                      ...(props.originalUrl ? { originalUrl: props.originalUrl } : {}),
+                    },
+                  ],
+                  index: 0,
+                }),
+            }
+          : actionsSource
+      }
     />
   );
 }
@@ -340,6 +384,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
   readonly workspaceRoot?: string | undefined;
   readonly workspaceMutationId?: string | null | undefined;
   readonly onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
+  readonly expandOnClick?: boolean | undefined;
 }) {
   const resource = props.resource;
   const threadWorkspaceMutationId = use(WorkspaceMutationIdContext);
@@ -415,6 +460,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
         mediaIdentity={JSON.stringify([props.environmentId, props.resource, props.srcFragment])}
         onRetry={refreshAssetUrl}
         actionsSource={actionsSource}
+        onImageExpand={props.onImageExpand}
       />
     );
   }
@@ -443,6 +489,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
       actionsSource={actionsSource}
       originalUrl={props.originalUrl}
       onImageExpand={props.onImageExpand}
+      expandOnClick={props.expandOnClick}
     />
   );
 });
