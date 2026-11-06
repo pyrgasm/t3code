@@ -159,9 +159,32 @@ export function attachVideoThumbnail(video: HTMLVideoElement, file: File): () =>
   return () => URL.revokeObjectURL(url);
 }
 
+/** A sent image attachment's file on its environment, for saving and revealing it. */
+export function attachmentImageActionsSource(
+  environmentId: EnvironmentId,
+  image: Pick<ChatImageAttachment, "id" | "name" | "mimeType" | "previewUrl">,
+): MediaActionSource {
+  return {
+    kind: "image",
+    name: image.name,
+    src: image.previewUrl ?? null,
+    asset: {
+      environmentId,
+      resource: {
+        _tag: "attachment",
+        attachmentId: image.id,
+        fileName: image.name,
+        mimeType: image.mimeType,
+      },
+    },
+  };
+}
+
 export function buildExpandedImagePreview(
   images: ReadonlyArray<ChatImageAttachment | ComposerFileAttachment>,
   selectedImageId: string,
+  /** Set for sent messages, whose attachments live on this environment. */
+  environmentId?: EnvironmentId,
 ): ExpandedImagePreview | null {
   const selected = images.find((image) => image.id === selectedImageId);
   if (selected?.type === "file" && selected.file && isVideoAttachment(selected)) {
@@ -203,6 +226,14 @@ export function buildExpandedImagePreview(
       name: image.name,
       mimeType: image.mimeType,
       ...(image.source?.kind === "snap-shot" ? { source: image.source } : {}),
+      ...(environmentId === undefined
+        ? {}
+        : {
+            actionsSource: attachmentImageActionsSource(environmentId, {
+              ...image,
+              previewUrl: image.src,
+            }),
+          }),
     })),
     index: selectedIndex,
   };
