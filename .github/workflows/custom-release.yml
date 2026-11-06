@@ -174,6 +174,18 @@ jobs:
       - name: Build JS bundle
         run: vp run build:desktop
 
+      # Upstream packages Windows on Linux, where afterPack skips the server compile cache. We
+      # package on Windows, so its ~14 files (one per server chunk) land in the payload too and
+      # push it past upstream's 80-file limit. Leave room for them; still catches a real leak.
+      - name: Allow for the compile cache in the Windows file limit
+        shell: bash
+        run: |
+          set -euo pipefail
+          f=scripts/build-desktop-artifact.ts
+          sed -i 's/^export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 80;$/export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 100;/' "$f"
+          grep -q '^export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 100;$' "$f" \
+            || { echo "upstream changed WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT; revisit this step" >&2; exit 1; }
+
       - name: Build installer
         shell: bash
         env:
