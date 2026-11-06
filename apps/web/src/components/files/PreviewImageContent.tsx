@@ -4,6 +4,7 @@ import { MaximizeIcon, MinusIcon, PlusIcon, ScanIcon } from "lucide-react";
 import { ExpandedImageDialog } from "~/components/chat/ExpandedImageDialog";
 import { observeResize } from "~/lib/observeResize";
 import { AttachmentImage } from "../media/AttachmentImage";
+import type { MediaActionSource } from "../media/MediaActions";
 import { FileSurfaceAction, FileSurfaceFailure } from "./fileSurfaceChrome";
 
 export default function PreviewImageContent(props: {
@@ -11,6 +12,7 @@ export default function PreviewImageContent(props: {
   readonly name: string;
   readonly mimeType?: string;
   readonly onError?: () => void;
+  readonly actionsSource?: MediaActionSource | undefined;
 }) {
   const gt = useGT();
   const [failed, setFailed] = useState(false);
@@ -124,6 +126,7 @@ export default function PreviewImageContent(props: {
                 src: props.src,
                 name: props.name,
                 ...(props.mimeType ? { mimeType: props.mimeType } : {}),
+                ...(props.actionsSource ? { actionsSource: props.actionsSource } : {}),
               },
             ],
             index: 0,

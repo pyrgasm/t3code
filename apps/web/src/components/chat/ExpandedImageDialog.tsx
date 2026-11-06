@@ -16,6 +16,7 @@ import { useAssetUrlRefresh, useAssetUrlState } from "../../assets/assetUrls";
 import { OpenMediaLink } from "../media/OpenMediaLink";
 import { MediaActions, type MediaActionSource } from "../media/MediaActions";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
+import { MediaViewerActions } from "../media/MediaViewerActions";
 import { isContextMenuOpen } from "../../contextMenuFallback";
 import {
   SnapShotAccessibilityData,
@@ -111,7 +112,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   const index =
     imageCount > 0 ? (((preview.index + imageOffset) % imageCount) + imageCount) % imageCount : 0;
   const item = preview.images[index];
-  const source: MediaActionSource = item?.actionsSource ?? {
+  const { onExpand: _alreadyExpanded, ...source }: MediaActionSource = item?.actionsSource ?? {
     kind: item?.type === "video" ? "video" : "image",
     name: item?.name ?? gt("Media"),
     src: item?.src ?? null,
@@ -197,6 +198,9 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         <DialogTitle className="sr-only">
           {isVideo ? gt("Expanded video preview") : gt("Expanded image preview")}
         </DialogTitle>
+        <div className="absolute right-10 top-0 z-20">
+          <MediaViewerActions key={index} source={actionsSource} />
+        </div>
         <Button
           type="button"
           ref={closeButtonRef}
