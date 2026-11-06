@@ -429,6 +429,7 @@ const finalizeAbsoluteMediaFileAsset = Effect.fn("AssetAccess.finalizeAbsoluteMe
         expiresAt: input.expiresAt,
       },
       fileName: path.basename(canonicalFile),
+      filePath: canonicalFile,
       fileRevision: opened.fileRevision,
       imageDimensions: opened.dimensions,
     };
@@ -523,6 +524,7 @@ const finalizeWorkspaceFileAsset = Effect.fn("AssetAccess.finalizeWorkspaceFileA
             expiresAt: input.expiresAt,
           },
       fileName: path.basename(resolved.relativePath),
+      filePath: canonicalFile,
       imageDimensions,
       fileRevision: undefined,
     };
@@ -545,6 +547,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
   let sourcePath: string | undefined;
   let imageDimensions: ImageDimensions | null = null;
   let fileRevision: string | undefined;
+  let filePath: string | undefined;
 
   switch (input.resource._tag) {
     case "media-file": {
@@ -571,6 +574,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       });
       claims = finalized.claims;
       fileName = finalized.fileName;
+      filePath = finalized.filePath;
       imageDimensions = finalized.imageDimensions;
       fileRevision = finalized.fileRevision;
       break;
@@ -598,6 +602,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       });
       claims = finalized.claims;
       fileName = finalized.fileName;
+      filePath = finalized.filePath;
       imageDimensions = finalized.imageDimensions;
       break;
     }
@@ -615,6 +620,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
         });
         claims = finalized.claims;
         fileName = finalized.fileName;
+        filePath = finalized.filePath;
         imageDimensions = finalized.imageDimensions;
         fileRevision = finalized.fileRevision;
         break;
@@ -636,6 +642,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       });
       claims = finalized.claims;
       fileName = finalized.fileName;
+      filePath = finalized.filePath;
       imageDimensions = finalized.imageDimensions;
       fileRevision = finalized.fileRevision;
       break;
@@ -684,6 +691,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
         expiresAt,
       };
       fileName = input.resource.fileName ?? path.basename(attachmentPath);
+      filePath = attachmentPath;
       break;
     }
     case "project-favicon": {
@@ -872,6 +880,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
     ...(sourcePath !== undefined ? { sourcePath } : {}),
     ...(imageDimensions !== null ? { imageDimensions } : {}),
     ...(fileRevision !== undefined ? { fileRevision } : {}),
+    ...(filePath !== undefined ? { filePath } : {}),
   };
 });
 
