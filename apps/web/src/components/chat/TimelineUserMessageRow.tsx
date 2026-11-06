@@ -47,8 +47,10 @@ import { Button, InlineButton } from "../ui/button";
 import { FreshSessionRow, ModelSwitchRow } from "./V2LifecycleRow";
 import { useAssetUrlRefresh, useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
 import { AttachmentImage } from "../media/AttachmentImage";
+import { MediaActions } from "../media/MediaActions";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
 import {
+  attachmentImageActionsSource,
   buildAttachmentVideoAsset,
   buildAttachmentVideoPreview,
   buildExpandedImagePreview,
@@ -218,6 +220,10 @@ function UserVideoAttachment({
     );
   }
 
+  const expand = () => {
+    const preview = buildAttachmentVideoPreview(ctx.activeThreadEnvironmentId, file);
+    if (preview) ctx.onImageExpand(preview);
+  };
   const player = (
     <MediaVideoPlayer
       src={src}
@@ -226,10 +232,7 @@ function UserVideoAttachment({
       }
       label={file.name}
       preload="visible"
-      onOpen={() => {
-        const preview = buildAttachmentVideoPreview(ctx.activeThreadEnvironmentId, file);
-        if (preview) ctx.onImageExpand(preview);
-      }}
+      onOpen={expand}
       className="block aspect-[4/3] w-full"
       videoClassName={cn(
         "aspect-auto size-full",
@@ -240,7 +243,9 @@ function UserVideoAttachment({
         !standalone && "rounded-lg border border-border/80",
       )}
       onRetry={asset ? refreshAssetUrl : undefined}
-      actionsSource={asset ? { kind: "video", name: file.name, src, asset } : undefined}
+      actionsSource={
+        asset ? { kind: "video", name: file.name, src, asset, onExpand: expand } : undefined
+      }
     />
   );
   return standalone ? (
@@ -499,6 +504,14 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     attachmentReferences.map((reference) => reference.attachmentId),
   );
   const regularImages = userImages.filter((image) => !image.name.startsWith("preview-annotation-"));
+  const expandImage = (imageId: string) => {
+    const preview = buildExpandedImagePreview(
+      regularImages,
+      imageId,
+      ctx.activeThreadEnvironmentId,
+    );
+    if (preview) onImageExpand(preview);
+  };
   const unchippedFiles = otherUserFiles.filter((file) => !chippedAttachmentIds.has(file.id));
   // Images or videos sent without words show as media, not as a bubble around them.
   const mediaOnly =
@@ -661,7 +674,11 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           annotationImage={annotationImage}
           attachment={attachment}
           onExpandImage={(image) => {
-            const preview = buildExpandedImagePreview(userImages, image.id);
+            const preview = buildExpandedImagePreview(
+              userImages,
+              image.id,
+              ctx.activeThreadEnvironmentId,
+            );
             if (preview) onImageExpand(preview);
           }}
           onOpenFile={onFileOpen}
@@ -732,34 +749,38 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             )}
           >
             {image.previewUrl ? (
-              <button
-                type="button"
-                className="block h-full w-full cursor-zoom-in"
-                aria-label={`Preview ${image.name}`}
-                onClick={() => {
-                  const preview = buildExpandedImagePreview(regularImages, image.id);
-                  if (!preview) return;
-                  ctx.onImageExpand(preview);
+              <MediaActions
+                showTooltip={false}
+                source={{
+                  ...attachmentImageActionsSource(ctx.activeThreadEnvironmentId, image),
+                  onExpand: () => expandImage(image.id),
                 }}
               >
-                {/* Isolate the thumbnail raster from nearby activity repaints in Chromium. */}
-                <AttachmentImage
-                  name={image.name}
-                  mimeType={image.mimeType}
-                  src={image.previewUrl}
-                  alt={image.name}
-                  decoding="async"
-                  loading="lazy"
-                  className={cn(
-                    "block transform-gpu",
-                    standaloneMedia && image.source?.kind === "snap-shot"
-                      ? "h-auto max-h-48 w-auto min-w-24 max-w-full object-contain"
-                      : loneImage
-                        ? "h-48 w-auto min-w-24 max-w-full object-cover"
-                        : "size-full object-cover",
-                  )}
-                />
-              </button>
+                <button
+                  type="button"
+                  className="block h-full w-full cursor-zoom-in"
+                  aria-label={`Preview ${image.name}`}
+                  onClick={() => expandImage(image.id)}
+                >
+                  {/* Isolate the thumbnail raster from nearby activity repaints in Chromium. */}
+                  <AttachmentImage
+                    name={image.name}
+                    mimeType={image.mimeType}
+                    src={image.previewUrl}
+                    alt={image.name}
+                    decoding="async"
+                    loading="lazy"
+                    className={cn(
+                      "block transform-gpu",
+                      standaloneMedia && image.source?.kind === "snap-shot"
+                        ? "h-auto max-h-48 w-auto min-w-24 max-w-full object-contain"
+                        : loneImage
+                          ? "h-48 w-auto min-w-24 max-w-full object-cover"
+                          : "size-full object-cover",
+                    )}
+                  />
+                </button>
+              </MediaActions>
             ) : (
               <div
                 className={cn(
