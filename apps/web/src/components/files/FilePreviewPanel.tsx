@@ -222,7 +222,12 @@ function WorkspaceImagePreview(props: {
   return assetUrl._tag === "Success" && imageUrl !== null ? (
     <MediaActions source={actionsSource}>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <PreviewImage key={imageUrl} src={imageUrl} name={props.alt} />
+        <PreviewImage
+          key={imageUrl}
+          src={imageUrl}
+          name={props.alt}
+          actionsSource={actionsSource}
+        />
       </div>
     </MediaActions>
   ) : (
