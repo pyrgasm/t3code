@@ -1,12 +1,13 @@
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import { AsyncResult } from "effect/reactivity";
-import { PlayIcon, RotateCwIcon, TriangleAlertIcon } from "lucide-react";
+import { Maximize2Icon, PlayIcon, RotateCwIcon, TriangleAlertIcon } from "lucide-react";
 import { useState, type CSSProperties } from "react";
 
 import { observeIntersection } from "../../lib/observeIntersection";
 import { cn } from "../../lib/utils";
 import { prepareVideoFirstFrame } from "../../lib/videoFirstFrame";
 import { Button } from "../ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { OpenMediaLink } from "./OpenMediaLink";
 import { MediaActions, type MediaActionSource } from "./MediaActions";
 
@@ -123,10 +124,11 @@ export function MediaVideoPlayer({
     setRetrying(false);
   };
 
+  const expand = actionsSource?.onExpand;
   const player = (
     <span
       ref={observePreload}
-      className={cn("relative inline-block align-middle", className)}
+      className={cn("group/video relative inline-block align-middle", className)}
       style={style}
       data-markdown-copy={copyMarkdown}
     >
@@ -210,6 +212,29 @@ export function MediaVideoPlayer({
             <PlayIcon aria-hidden className="size-4 fill-current" />
           </span>
         </button>
+      ) : null}
+      {expand && !onOpen && src !== null && !failed ? (
+        <span className="absolute right-2 top-2 opacity-0 transition-opacity duration-150 group-hover/video:opacity-100 group-focus-within/video:opacity-100 pointer-coarse:opacity-100">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="overlay"
+                  aria-label={label ? `Open ${label} preview` : "Open video preview"}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    expand();
+                  }}
+                />
+              }
+            >
+              <Maximize2Icon />
+            </TooltipTrigger>
+            <TooltipPopup side="top">Open preview</TooltipPopup>
+          </Tooltip>
+        </span>
       ) : null}
     </span>
   );

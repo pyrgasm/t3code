@@ -25,6 +25,8 @@ const state = vi.hoisted(() => ({
   openFile: vi.fn(),
   clipboard: vi.fn(),
   copyText: vi.fn(),
+  openInEditor: vi.fn(),
+  host: null as { revealLabel: string | undefined } | null,
   menuFinished: null as (() => void) | null,
 }));
 
@@ -40,6 +42,9 @@ vi.mock("../../localApi", () => ({
 }));
 vi.mock("../../state/assets", () => ({ assetEnvironment: { createUrl: {} } }));
 vi.mock("../../state/use-atom-query-runner", () => ({ useAtomQueryRunner: () => state.mint }));
+vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => state.openInEditor }));
+vi.mock("../../state/shell", () => ({ shellEnvironment: { openInEditor: {} } }));
+vi.mock("./mediaHostActions", () => ({ mediaHostActionsAtom: () => "host-actions" }));
 vi.mock("../../state/session", () => ({
   environmentSession: { sessionStateAtom: (environmentId: string) => environmentId },
   readPreparedConnection: () => ({ httpBaseUrl: "https://host.test" }),
@@ -53,6 +58,7 @@ vi.mock("../../state/query", () => ({
 vi.mock("../../rpc/atomRegistry", () => ({
   appAtomRegistry: {
     get: (environmentId: string) => {
+      if (environmentId === "host-actions") return state.host;
       const session = state.sessions.get(environmentId);
       return session === undefined ? AsyncResult.initial() : AsyncResult.success(session);
     },
@@ -129,6 +135,8 @@ beforeEach(() => {
   state.showMenu.mockReset().mockResolvedValue(null);
   state.openFile.mockReset();
   state.copyText.mockReset().mockResolvedValue(true);
+  state.openInEditor.mockReset().mockResolvedValue(AsyncResult.success(undefined));
+  state.host = { revealLabel: "Reveal in File Explorer" };
   state.menuFinished = null;
   class TestClipboardItem {
     constructor(readonly items: Record<string, Promise<Blob>>) {}
@@ -163,7 +171,7 @@ it.each(["workspace-file", "media-file"] as const)(
   },
 );
 
-it.each(["save", "copy-image", "open-file"])(
+it.each(["save", "copy-image", "open-file", "reveal", "open-default"])(
   "rechecks access when %s is selected from an already open native menu",
   async (action) => {
     state.sessions.set(environmentId, granted);
@@ -182,5 +190,6 @@ it.each(["save", "copy-image", "open-file"])(
     expect(state.download).not.toHaveBeenCalled();
     expect(state.clipboard).not.toHaveBeenCalled();
     expect(state.openFile).not.toHaveBeenCalled();
+    expect(state.openInEditor).not.toHaveBeenCalled();
   },
 );
