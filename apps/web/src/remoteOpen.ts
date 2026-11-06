@@ -108,7 +108,7 @@ function remoteOpenStatesEqual(previous: RemoteOpenState, next: RemoteOpenState)
 }
 
 // Config pushes recreate presentations; preserve equal resolutions to avoid re-rendering file links.
-const remoteOpenResolutionAtom = Atom.family((environmentId: EnvironmentId) =>
+export const remoteOpenResolutionAtom = Atom.family((environmentId: EnvironmentId) =>
   Atom.make((get): RemoteOpenResolution => {
     const presentation = get(environmentPresentations.presentationAtom(environmentId));
     const entry = presentation?.entry ?? null;
