@@ -1397,7 +1397,9 @@ const CHAT_MARKDOWN_COMPONENTS = {
       fileLinkChip,
       resolvedTheme,
     } = use(ChatMarkdownRendererContext);
-    const imageExpand = use(MarkdownLinkContext) ? undefined : expandMedia;
+    // Inside a link the click navigates, so only the media menu opens the preview.
+    const expandOnClick = !use(MarkdownLinkContext);
+    const imageExpand = expandMedia;
     const contextReference = typeof src === "string" ? parseComposerContextHref(src) : null;
     if (contextReference) {
       const label = alt || contextReference.contextId;
@@ -1494,6 +1496,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           framed={false}
           fallbackSrc={hostMediaUrl}
           onImageExpand={imageExpand}
+          expandOnClick={expandOnClick}
         />
       );
     }
@@ -1517,6 +1520,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
             originalUrl={originalUrl}
             style={authoredSizeStyle}
             actionsSource={actionsSource}
+            onImageExpand={imageExpand}
           />
         );
       }
@@ -1533,6 +1537,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           actionsSource={actionsSource}
           originalUrl={originalUrl}
           onImageExpand={imageExpand}
+          expandOnClick={expandOnClick}
         />
       );
     }
@@ -1551,6 +1556,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           imageProps={imageProps}
           actionsSource={{ kind, name: altText || kind, src: hostSrc }}
           onImageExpand={imageExpand}
+          expandOnClick={expandOnClick}
         />
       );
     }
@@ -1572,6 +1578,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           workspaceRoot={cwd}
           workspaceMutationId={workspaceMutationId}
           onImageExpand={imageExpand}
+          expandOnClick={expandOnClick}
         />
       );
     }
