@@ -9,15 +9,9 @@ const sidebar = NodeFS.readFileSync(new URL("../Sidebar.tsx", import.meta.url), 
 const threadRow = NodeFS.readFileSync(new URL("./SidebarThreadRow.tsx", import.meta.url), "utf8");
 
 describe("project folder toggle", () => {
-  it("flips the boring sidebar setting and clears the legacy opt-in", () => {
-    expect(projectFolderTogglePatch(false)).toEqual({
-      boringSidebarEnabled: true,
-      legacySidebarEnabled: false,
-    });
-    expect(projectFolderTogglePatch(true)).toEqual({
-      boringSidebarEnabled: false,
-      legacySidebarEnabled: false,
-    });
+  it("flips the boring sidebar setting", () => {
+    expect(projectFolderTogglePatch(false)).toEqual({ boringSidebarEnabled: true });
+    expect(projectFolderTogglePatch(true)).toEqual({ boringSidebarEnabled: false });
   });
 
   it("sits beside the search field, before the project filter", () => {

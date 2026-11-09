@@ -1,15 +1,14 @@
 import { FolderTreeIcon } from "lucide-react";
 
-import { updateClientSettings, useBoringSidebarEnabled } from "../../hooks/useSettings";
+import { updateClientSettings, useClientSettings } from "../../hooks/useSettings";
 import { SidebarHeaderIconButton } from "./SidebarThreadHeader";
 
-// Same patch as the Labs "Boring sidebar" switch, which also clears the removed legacy opt-in.
 export function projectFolderTogglePatch(enabled: boolean) {
-  return { boringSidebarEnabled: !enabled, legacySidebarEnabled: false };
+  return { boringSidebarEnabled: !enabled };
 }
 
 export function ProjectFolderToggle() {
-  const enabled = useBoringSidebarEnabled();
+  const enabled = useClientSettings((settings) => settings.boringSidebarEnabled);
   return (
     <SidebarHeaderIconButton
       label={enabled ? "Stop grouping by project" : "Group threads into project folders"}
