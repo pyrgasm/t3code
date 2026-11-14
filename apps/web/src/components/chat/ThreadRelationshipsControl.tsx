@@ -801,6 +801,7 @@ export function ThreadRelationshipsPanel(props: {
         childThread={node?.thread ?? undefined}
         parentProject={currentProject}
         childProject={project}
+        usageThread={{ environmentId: props.environmentId, threadId }}
       />
     ) : (
       <LineageTooltipContent title={threadTitle} hint={relationshipHint} />

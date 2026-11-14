@@ -1,6 +1,11 @@
 import * as Schema from "effect/Schema";
 
-import { ForwardCompatibleArray, NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  ForwardCompatibleArray,
+  NonNegativeInt,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 
 /** Bump for incompatible UsageSummary changes; skipped unknown array variants need no bump. */
 export const USAGE_CONTRACT_VERSION = 6 as const;
@@ -162,6 +167,29 @@ export const UsageSummary = Schema.Struct({
   modelFilter: Schema.optional(UsageModelFilter),
 });
 export type UsageSummary = typeof UsageSummary.Type;
+
+export const ThreadUsageInput = Schema.Struct({
+  threadIds: Schema.Array(ThreadId).check(Schema.isMaxLength(200)),
+});
+export type ThreadUsageInput = typeof ThreadUsageInput.Type;
+
+/** A thread's spend over all its turns, priced at list rates, and its latest context use. */
+export const ThreadUsage = Schema.Struct({
+  threadId: ThreadId,
+  costUsd: Schema.Number,
+  /** Turns with token counts whose model has no known price; their tokens are not in costUsd. */
+  unpricedTurns: NonNegativeInt,
+  totals: UsageTokenTotals,
+  context: Schema.NullOr(
+    Schema.Struct({ usedTokens: NonNegativeInt, maxTokens: Schema.NullOr(NonNegativeInt) }),
+  ),
+});
+export type ThreadUsage = typeof ThreadUsage.Type;
+
+export const ThreadUsageResult = Schema.Struct({
+  threads: ForwardCompatibleArray(ThreadUsage),
+});
+export type ThreadUsageResult = typeof ThreadUsageResult.Type;
 
 export class UsageReadError extends Schema.TaggedError<UsageReadError>()("UsageReadError", {
   reason: Schema.Literals(["scanFailed", "invalidWindow"]),

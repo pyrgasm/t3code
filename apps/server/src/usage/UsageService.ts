@@ -151,6 +151,11 @@ export class UsageService extends Context.Service<
   {
     readonly readSummary: (input: UsageSummaryInput) => Effect.Effect<UsageSummary, UsageReadError>;
     readonly refreshRates: Effect.Effect<UsagePricing>;
+    /** Model list prices, loading them first if this server has none yet, and the user's overrides. */
+    readonly priceTables: Effect.Effect<
+      { readonly rates: RateTable; readonly overrides: RateTable },
+      UsageReadError
+    >;
   }
 >()("t3/usage/UsageService") {}
 
@@ -1190,7 +1195,15 @@ export const make = Effect.gen(function* () {
     return yield* Deferred.await(deferred);
   });
 
-  return { readSummary, refreshRates, awaitPersisted } as const;
+  const priceTables = Effect.all([ensureRates(false), readSettings]).pipe(
+    Effect.map(([, settings]) => ({
+      rates,
+      overrides: createOverrideRateTable(settings.usagePriceOverrides),
+    })),
+    Effect.withSpan("UsageService.priceTables"),
+  );
+
+  return { readSummary, refreshRates, priceTables, awaitPersisted } as const;
 });
 
 export const layer = Layer.effect(UsageService, make);

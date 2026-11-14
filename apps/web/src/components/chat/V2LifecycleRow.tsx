@@ -65,6 +65,10 @@ import { ProviderInstanceIcon, providerTextColor } from "./ProviderInstanceIcon"
 import { cn } from "~/lib/utils";
 import { TimelineSystemDivider } from "./TimelineSystemDivider";
 import { subagentResumedSince } from "./V2LifecycleRow.logic";
+import { subagentStatsLine } from "./threadStats.logic";
+import { useThreadUsage } from "../../state/threadUsage";
+import { REASONING_EFFORT_OPTION_IDS } from "@t3tools/client-runtime/state/thread-execution";
+import { formatModelSlugName, getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 import { Button, InlineButton } from "../ui/button";
 import { T3Wordmark } from "../T3Wordmark";
 
@@ -455,6 +459,12 @@ function SubagentTimelineLink(props: {
           <span className="min-w-0 truncate text-xs font-medium text-foreground">
             {props.title}
           </span>
+          <SubagentRowStats
+            environmentId={props.parentRef.environmentId}
+            threadId={threadId}
+            model={agent?.model ?? null}
+            modelSelection={agent?.modelSelection}
+          />
           {remote !== undefined ? (
             <span className="shrink-0 text-xs text-muted-foreground">on {remote.label}</span>
           ) : null}
@@ -572,7 +582,36 @@ function SubagentTimelineTooltip(
       childThread={child}
       parentProject={parentProject ?? undefined}
       childProject={childProject ?? undefined}
+      usageThread={props.threadId ? { environmentId, threadId: props.threadId } : undefined}
     />
+  );
+}
+
+/** Model, effort, context and spend after the title, without reading the provider catalog per row. */
+function SubagentRowStats(props: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId | null;
+  readonly model: string | null;
+  readonly modelSelection: OrchestrationV2Subagent["modelSelection"];
+}) {
+  const usage =
+    useThreadUsage(props.environmentId, props.threadId === null ? [] : [props.threadId])?.[0] ??
+    null;
+  const model = props.model?.trim() || props.modelSelection?.model.trim();
+  const effort =
+    REASONING_EFFORT_OPTION_IDS.map((id) =>
+      getModelSelectionStringOptionValue(props.modelSelection, id),
+    ).find(Boolean) ?? null;
+  const line = subagentStatsLine({
+    modelLabel: model ? formatModelSlugName(model) : null,
+    effort,
+    usage,
+  });
+  if (line === "") return null;
+  return (
+    <span className="min-w-0 shrink truncate text-2xs text-muted-foreground tabular-nums">
+      {line}
+    </span>
   );
 }
 

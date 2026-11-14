@@ -640,6 +640,14 @@ export interface ProjectionStoreV2Shape {
   readonly getThreadTitles: (
     threadIds: ReadonlyArray<ThreadId>,
   ) => Effect.Effect<Record<ThreadId, string>, ProjectionStoreV2Error>;
+  /** Token counts of every provider turn per thread and model, and each thread's latest context use. */
+  readonly getThreadUsageRows: (threadIds: ReadonlyArray<ThreadId>) => Effect.Effect<
+    {
+      readonly turns: ReadonlyArray<ThreadTurnUsageRow>;
+      readonly contexts: ReadonlyArray<ThreadContextUsageRow>;
+    },
+    ProjectionStoreV2Error
+  >;
   readonly getThreadWorktreePaths: (options?: {
     readonly includeArchived?: boolean;
   }) => Effect.Effect<
@@ -805,6 +813,27 @@ type ProjectionWindow = Omit<
   readonly forkCreatedAt?: DateTime.Utc | undefined;
   readonly historyAnchor?: { readonly threadId: ThreadId; readonly itemId: TurnItemId } | undefined;
 };
+
+export interface ThreadTurnUsageRow {
+  readonly threadId: ThreadId;
+  readonly model: string | null;
+  readonly turns: number;
+  /** Includes cache reads and writes. */
+  readonly inputTokens: number;
+  readonly cachedInputTokens: number;
+  readonly cacheCreationTokens: number;
+  readonly outputTokens: number;
+  readonly reasoningTokens: number;
+  /** Native subagents and compaction, which the provider bills beyond the main agent. */
+  readonly otherInputTokens: number;
+  readonly otherOutputTokens: number;
+}
+
+export interface ThreadContextUsageRow {
+  readonly threadId: ThreadId;
+  readonly usedTokens: number;
+  readonly maxTokens: number | null;
+}
 
 export class ProjectionStoreV2 extends Context.Service<ProjectionStoreV2, ProjectionStoreV2Shape>()(
   "t3/orchestration-v2/ProjectionStore/ProjectionStoreV2",
@@ -8954,6 +8983,98 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       return Object.fromEntries(rows.map((row) => [row.thread_id, row.title]));
     }, Effect.mapError(shellSnapshotReadError));
 
+    const getThreadUsageRows = Effect.fn("ProjectionStore.getThreadUsageRows")(function* (
+      threadIds: ReadonlyArray<ThreadId>,
+    ) {
+      if (threadIds.length === 0) return { turns: [], contexts: [] };
+      // The reported model, else the first ledger model, else what the thread asked for.
+      const turns = yield* sql<{
+        readonly thread_id: ThreadId;
+        readonly model: string | null;
+        readonly turns: number;
+        readonly input_tokens: number;
+        readonly cached_input_tokens: number;
+        readonly cache_creation_tokens: number;
+        readonly output_tokens: number;
+        readonly reasoning_tokens: number;
+        readonly other_input_tokens: number;
+        readonly other_output_tokens: number;
+      }>`
+        SELECT turn.thread_id,
+          COALESCE(
+            json_extract(turn.payload_json, '$.model'),
+            json_extract(turn.payload_json, '$.turnTokenUsage.models[0]'),
+            json_extract(thread.payload_json, '$.modelSelection.model')
+          ) AS model,
+          COUNT(*) AS turns,
+          SUM(COALESCE(json_extract(turn.payload_json, '$.turnTokenUsage.inputTokens'), 0)) AS input_tokens,
+          SUM(COALESCE(json_extract(turn.payload_json, '$.turnTokenUsage.cachedInputTokens'), 0)) AS cached_input_tokens,
+          SUM(COALESCE(json_extract(turn.payload_json, '$.turnTokenUsage.cacheCreationTokens'), 0)) AS cache_creation_tokens,
+          SUM(COALESCE(json_extract(turn.payload_json, '$.turnTokenUsage.outputTokens'), 0)) AS output_tokens,
+          SUM(COALESCE(json_extract(turn.payload_json, '$.turnTokenUsage.reasoningTokens'), 0)) AS reasoning_tokens,
+          SUM(COALESCE(json_extract(turn.payload_json, '$.turnTokenUsage.otherUsage.inputTokens'), 0)) AS other_input_tokens,
+          SUM(COALESCE(json_extract(turn.payload_json, '$.turnTokenUsage.otherUsage.outputTokens'), 0)) AS other_output_tokens
+        FROM orchestration_v2_projection_provider_turns AS turn
+        LEFT JOIN orchestration_v2_projection_threads AS thread ON thread.thread_id = turn.thread_id
+        WHERE turn.thread_id IN ${sql.in(threadIds)}
+          AND json_extract(turn.payload_json, '$.turnTokenUsage') IS NOT NULL
+          AND COALESCE(json_extract(turn.payload_json, '$.turnTokenUsage.localCommand'), 0) = 0
+        GROUP BY turn.thread_id, model
+      `;
+      // The newest turn report, as the composer's meter reads it, else the active provider thread's.
+      const contexts = yield* sql<{
+        readonly thread_id: ThreadId;
+        readonly used_tokens: number;
+        readonly max_tokens: number | null;
+      }>`
+        SELECT thread_id, used_tokens, max_tokens, 0 AS priority FROM (
+          SELECT thread_id,
+            json_extract(payload_json, '$.tokenUsage.usedTokens') AS used_tokens,
+            json_extract(payload_json, '$.tokenUsage.maxTokens') AS max_tokens,
+            ROW_NUMBER() OVER (
+              PARTITION BY thread_id
+              ORDER BY julianday(json_extract(payload_json, '$.tokenUsage.updatedAt')) DESC, ordinal DESC
+            ) AS position
+          FROM orchestration_v2_projection_provider_turns
+          WHERE thread_id IN ${sql.in(threadIds)}
+            AND json_extract(payload_json, '$.tokenUsage.usedTokens') IS NOT NULL
+        ) WHERE position = 1
+        UNION ALL
+        SELECT thread_id,
+          json_extract(payload_json, '$.contextUsage.usedTokens'),
+          json_extract(payload_json, '$.contextUsage.maxTokens'),
+          1
+        FROM orchestration_v2_projection_provider_threads
+        WHERE thread_id IN ${sql.in(threadIds)}
+          AND status = 'active'
+          AND json_extract(payload_json, '$.contextUsage.usedTokens') IS NOT NULL
+        ORDER BY priority
+      `;
+      const seen = new Set<ThreadId>();
+      return {
+        turns: turns.map((row) => ({
+          threadId: row.thread_id,
+          model: row.model,
+          turns: row.turns,
+          inputTokens: row.input_tokens,
+          cachedInputTokens: row.cached_input_tokens,
+          cacheCreationTokens: row.cache_creation_tokens,
+          outputTokens: row.output_tokens,
+          reasoningTokens: row.reasoning_tokens,
+          otherInputTokens: row.other_input_tokens,
+          otherOutputTokens: row.other_output_tokens,
+        })),
+        // Rows come turn reports first, so the first row per thread wins.
+        contexts: contexts.flatMap((row) => {
+          if (seen.has(row.thread_id)) return [];
+          seen.add(row.thread_id);
+          return [
+            { threadId: row.thread_id, usedTokens: row.used_tokens, maxTokens: row.max_tokens },
+          ];
+        }),
+      };
+    }, Effect.mapError(shellSnapshotReadError));
+
     const findGuestShareThreadId = Effect.fn("ProjectionStore.findGuestShareThreadId")(function* (
       shareId: GuestShareId,
     ) {
@@ -9124,6 +9245,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getSettlementCandidates: readOnReader(getSettlementCandidates),
       getThreadsWithPullRequests: readOnReader(getThreadsWithPullRequests),
       getThreadTitles: readOnReader(getThreadTitles),
+      getThreadUsageRows: readOnReader(getThreadUsageRows),
       getThreadLinkMetadata: readOnReader(getThreadLinkMetadata),
       getThreadWorktreePaths: readOnReader(getThreadWorktreePaths),
       getOpenRemoteDelegatedTasks: getOpenRemoteDelegatedTasks.pipe(NodeSqliteClient.readOnly),
