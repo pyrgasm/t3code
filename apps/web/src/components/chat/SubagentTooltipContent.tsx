@@ -1,4 +1,6 @@
 import type {
+  EnvironmentId,
+  ThreadId,
   OrchestrationV2ThreadShell,
   OrchestrationV2TurnItemStatus,
   OrchestrationProjectShell,
@@ -22,6 +24,7 @@ import {
   CircleDashedIcon,
   CircleXIcon,
   FolderIcon,
+  GaugeIcon,
   GitBranchIcon,
   TerminalIcon,
 } from "lucide-react";
@@ -29,6 +32,8 @@ import { ThreadHoverCard } from "../ThreadHoverCard";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { cn } from "~/lib/utils";
+import { useThreadUsage } from "../../state/threadUsage";
+import { formatContextUse, formatUsd } from "./threadStats.logic";
 import { deriveProviderInstanceEntries, shouldShowInstanceBadge } from "../../providerInstances";
 
 export function SubagentTooltipContent(props: {
@@ -50,6 +55,8 @@ export function SubagentTooltipContent(props: {
   status: OrchestrationV2TurnItemStatus;
   result?: string | null | undefined;
   progress?: string | null | undefined;
+  /** The thread that runs this subagent, whose context and spend the card shows. */
+  usageThread?: { readonly environmentId: EnvironmentId; readonly threadId: ThreadId } | undefined;
 }) {
   const gt = useGT();
   const messages = useMessages();
@@ -213,6 +220,33 @@ export function SubagentTooltipContent(props: {
           <MiddleTruncate value={preview} className="flex" showTitle={false} />
         </div>
       ) : null}
+      {props.usageThread ? (
+        <SubagentUsage
+          environmentId={props.usageThread.environmentId}
+          threadId={props.usageThread.threadId}
+        />
+      ) : null}
     </ThreadHoverCard>
+  );
+}
+
+function SubagentUsage(props: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+}) {
+  const usage = useThreadUsage(props.environmentId, [props.threadId])?.[0] ?? null;
+  if (usage === null) return null;
+  return (
+    <div className="flex min-w-0 items-center gap-2 tabular-nums">
+      <GaugeIcon aria-hidden className="size-3 shrink-0" />
+      <span className="min-w-0 truncate">
+        {[
+          usage.context ? `Context ${formatContextUse(usage.context)}` : null,
+          usage.costUsd > 0 ? `≈ ${formatUsd(usage.costUsd)}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || "No usage reported"}
+      </span>
+    </div>
   );
 }

@@ -1523,6 +1523,9 @@ export default function ChatView(props: ChatViewProps) {
     activeProviderThread,
   );
   const pendingBackgroundTasks = deriveThreadPendingBackgroundTasks(serverProjection);
+  const subagentThreadIds = (serverProjection?.subagents ?? []).flatMap((subagent) =>
+    subagent.childThreadId === null ? [] : [subagent.childThreadId],
+  );
   const activeWorkStartedAt =
     deriveActiveWorkStartedAt(activeActivityRun, activeRuntime, localDispatchStartedAt) ??
     runlessWorkStartedAt;
@@ -3678,6 +3681,8 @@ export default function ChatView(props: ChatViewProps) {
                             ) : null}
                             {!composerMounted ? null : (
                               <ChatComposer
+                                contextWindow={activeContextWindow}
+                                subagentThreadIds={subagentThreadIds}
                                 canOperateThread={canOperateThread}
                                 reportedModelSelection={reportedModelSelection}
                                 multipleModelSelections={multipleModelSelections}
