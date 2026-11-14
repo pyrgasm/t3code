@@ -213,6 +213,10 @@ import {
 } from "./ComposerAttachmentStrip";
 import { CollapsedComposerStopAction, ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterControls";
+import { ThreadStatsMeter } from "./ThreadStatsMeter";
+import { getTriggerDisplayModelName } from "./providerIconUtils";
+import { formatModelSelectionEffort } from "@t3tools/client-runtime/state/thread-execution";
+import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { buildPullRequestReferenceContext } from "../pullRequest/pullRequestDetail.logic";
@@ -350,6 +354,9 @@ export interface ChatComposerHandle {
 
 export interface ChatComposerProps {
   composerDraftTarget: ScopedThreadRef | DraftId;
+  contextWindow: ContextWindowSnapshot | null;
+  /** Threads the active thread delegated to; their spend shows beside its own. */
+  subagentThreadIds: ReadonlyArray<ThreadId>;
   environmentId: EnvironmentId;
   canOperateThread: boolean;
   attachmentUploadsCapabilityKnown: boolean;
@@ -501,6 +508,8 @@ const NO_PROVIDER_SLASH_COMMANDS: ServerProvider["slashCommands"] = [];
 export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps) {
   const {
     composerDraftTarget,
+    contextWindow,
+    subagentThreadIds,
     environmentId,
     canOperateThread,
     attachmentUploadsCapabilityKnown,
@@ -963,6 +972,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedModelOptionsForDispatch,
   );
   const selectedModelForPicker = selectedModel;
+  const selectedCatalogModel = selectedProviderStatus?.models.find(
+    (model) => model.slug === selectedModel,
+  );
+  const statsModelLabel = selectedCatalogModel
+    ? getTriggerDisplayModelName(selectedCatalogModel, selectedProviderStatus?.driver)
+    : selectedModel || null;
+  const statsEffortLabel = formatModelSelectionEffort(
+    selectedModelSelection,
+    selectedProviderStatus?.models,
+  );
   const modelOptionsByInstance = new Map<ProviderInstanceId, ReadonlyArray<AppModelOption>>();
   for (const entry of providerInstanceEntries) {
     modelOptionsByInstance.set(
@@ -3773,6 +3792,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     keepFullHistory={props.keepFullHistory}
                     onToggleKeepFullHistory={props.onToggleKeepFullHistory}
                   >
+                    <ThreadStatsMeter
+                      environmentId={environmentId}
+                      threadId={routeKind === "server" ? activeThreadId : null}
+                      childThreadIds={subagentThreadIds}
+                      context={contextWindow}
+                      modelLabel={statsModelLabel}
+                      effortLabel={statsEffortLabel}
+                    />
                     {speechInput.available ? (
                       <>
                         <ComposerSpeechRecordingPill
