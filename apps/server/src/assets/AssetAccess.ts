@@ -577,6 +577,7 @@ const finalizeWorkspaceFileAsset = Effect.fn("AssetAccess.finalizeWorkspaceFileA
           expiresAt: input.expiresAt,
         },
         fileName: path.basename(resolved.relativePath),
+        filePath: canonicalFile,
         imageDimensions,
         fileRevision: undefined,
       };
